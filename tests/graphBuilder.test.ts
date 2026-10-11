@@ -62,4 +62,17 @@ describe("buildGraph", () => {
 		const model = buildGraph(vault, { filters: ALL_FILTERS });
 		expect(model.nodeById.get("C.md")!.degree).toBe(0);
 	});
+
+	it("keeps colour and group on reused nodes until the colour stage changes them", () => {
+		const first = buildGraph(sampleVault(), { filters: ALL_FILTERS });
+		const a = first.nodeById.get("A.md")!;
+		a.color = "#ff0000";
+		a.group = 2;
+		const second = buildGraph(sampleVault(), { filters: ALL_FILTERS, previous: first.nodeById });
+		// The node is still on screen while the rebuild runs; clearing it here would flash / race.
+		expect(second.nodeById.get("A.md")!.color).toBe("#ff0000");
+		expect(second.nodeById.get("A.md")!.group).toBe(2);
+		expect(second.nodeById.get("C.md")!.group).toBe(-1);
+	});
 });
+

@@ -26,9 +26,14 @@ export class WorkerPhysics {
 	/** Bumped on every start(); worker messages from an older run are ignored. */
 	private epoch = 0;
 
+	/**
+	 * @param source bundled worker source (spawned from a Blob URL)
+	 * @param createWorker optional factory, used by tests to supply a fake worker
+	 */
 	constructor(
 		private readonly source: string,
 		private readonly onFailure: (err: Error) => void,
+		private readonly createWorker?: () => Worker,
 	) {}
 
 	get running(): boolean {
@@ -37,14 +42,23 @@ export class WorkerPhysics {
 
 	private ensureWorker(): Worker {
 		if (this.worker) return this.worker;
-		this.url = URL.createObjectURL(new Blob([this.source], { type: "text/javascript" }));
-		const worker = new Worker(this.url);
+		let worker: Worker;
+		if (this.createWorker) worker = this.createWorker();
+		else {
+			this.url = URL.createObjectURL(new Blob([this.source], { type: "text/javascript" }));
+			worker = new Worker(this.url);
+		}
 		worker.onmessage = (e: MessageEvent) => {
 			const data = e.data as { kind?: string; epoch?: number; positions?: Float32Array; done?: boolean; error?: string };
 			if (data.epoch !== this.epoch) return; // left over from a previous graph / node order
 			if (data.kind === "sim:positions" && data.positions) {
 				this.latest = data.positions;
 				if (data.done) this.finished = true;
+				else if (this.finished) {
+					// The worker is running again (a command raced a "done" message): keep rendering.
+					this.finished = false;
+					this.restartRendering();
+				}
 			} else if (data.kind === "sim:error") this.fail(new Error(data.error ?? "Physics worker error"));
 		};
 		worker.onerror = (e) => this.fail(new Error(e.message || "Physics worker error"));
@@ -96,8 +110,13 @@ export class WorkerPhysics {
 	}
 
 	private wake(): void {
-		if (!this.finished || !this.renderer) return;
+		if (!this.finished) return;
 		this.finished = false;
+		this.restartRendering();
+	}
+
+	private restartRendering(): void {
+		if (!this.renderer) return;
 		this.renderer.engine.setSimulation({ cooldownTime: RUN_FOREVER });
 		this.renderer.reheat();
 	}

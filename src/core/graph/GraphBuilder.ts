@@ -79,8 +79,8 @@ export function buildGraph(snapshot: VaultSnapshot, options: BuildOptions): Grap
 		node.degree = 0;
 		node.inRefs = 0;
 		node.outRefs = 0;
-		node.group = -1;
-		node.color = undefined;
+		// Reused nodes keep colour/group: they are on screen until the new model is committed,
+		// and only the colour stage (GraphPipeline.applyColors) may change them.
 		nodeById.set(id, node);
 		return node;
 	};

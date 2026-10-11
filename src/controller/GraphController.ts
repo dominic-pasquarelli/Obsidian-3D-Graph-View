@@ -61,7 +61,10 @@ export class GraphController implements PanelContext, ToolbarContext {
 	private timers = new Map<string, number>();
 	private lastPointer: MouseEvent | null = null;
 	private interacted = false;
-	private busy: string | null = null;
+	/** Active busy reasons (build, indirect links…); the status shows the most recent one. */
+	private busy = new Map<string, string>();
+	private resolveModelReady!: () => void;
+	private readonly modelReady = new Promise<void>((resolve) => (this.resolveModelReady = resolve));
 	private disposed = false;
 	private stateListeners = new Set<() => void>();
 	private warningKey = "";
@@ -187,12 +190,14 @@ export class GraphController implements PanelContext, ToolbarContext {
 	 */
 	async refreshData(force = true): Promise<void> {
 		const gen = ++this.dataGen;
-		this.setBusy("Building graph…");
+		this.setBusy("data", "Building graph…");
 		try {
 			const model = await this.pipeline.buildModel(this.viewSettings, this.contentQueries, this.model);
 			if (gen !== this.dataGen || this.disposed) return;
 			const colorGen = ++this.colorGen;
-			await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.dataGen && !this.disposed);
+			// If the user edits colour groups while this build reads note content, their newer
+			// refreshColors() wins: this build must not paint the groups it captured earlier.
+			await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.dataGen && colorGen === this.colorGen && !this.disposed);
 			if (gen !== this.dataGen || this.disposed) return;
 			const fingerprint = modelFingerprint(model);
 			// Nothing structural changed: keep the current data and any indirect-link computation in flight.
@@ -206,6 +211,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 			this.style.setModel(model);
 			this.style.setActive(this.deps.host.activeNodeId());
 			this.pushData();
+			this.resolveModelReady();
 			this.scheduleFit();
 			// Colour groups were edited while this build was colouring: recolour with the latest groups.
 			if (colorGen !== this.colorGen) void this.refreshColors();
@@ -214,7 +220,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 			console.error("[3d-graph-view] failed to build graph", err);
 			this.deps.host.notify(`Graph build failed: ${err instanceof Error ? err.message : String(err)}`);
 		} finally {
-			if (gen === this.dataGen) this.setBusy(null);
+			if (gen === this.dataGen) this.setBusy("data", null);
 			this.refreshWarnings();
 		}
 	}
@@ -241,7 +247,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 		this.augmentKeys = keys;
 		const gen = ++this.augmentGen;
 		const willCompute = Array.from(keys.values()).some((k) => k !== "off");
-		if (willCompute) this.setBusy(this.plan.useWorker ? "Computing indirect links (worker)…" : "Computing indirect links…");
+		if (willCompute) this.setBusy("augment", this.plan.useWorker ? "Computing indirect links (worker)…" : "Computing indirect links…");
 		try {
 			const result = await this.pipeline.augment(model, this.forceSettings, this.plan);
 			if (gen !== this.augmentGen || this.disposed || model !== this.model) return;
@@ -259,7 +265,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 				this.deps.host.notify("Computing indirect links failed — see the developer console.");
 			}
 		} finally {
-			if (gen === this.augmentGen) this.setBusy(null);
+			if (gen === this.augmentGen) this.setBusy("augment", null);
 		}
 	}
 
@@ -270,6 +276,8 @@ export class GraphController implements PanelContext, ToolbarContext {
 		// Only the newest request may write colours (an older, slower one would paint stale groups).
 		const applied = await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.colorGen && model === this.model && !this.disposed);
 		if (!applied) return;
+		// Keep the "nothing changed" check in refreshData comparing against what is actually shown.
+		this.fingerprint = modelFingerprint(model);
 		this.renderer?.refreshStyle();
 		if ((this.forceSettings.groups as { enabled?: boolean } | undefined)?.enabled) this.reapplyForces();
 		this.refreshWarnings();
@@ -359,15 +367,25 @@ export class GraphController implements PanelContext, ToolbarContext {
 		});
 	}
 
-	private setBusy(text: string | null): void {
-		this.busy = text;
+	private setBusy(reason: string, text: string | null): void {
+		if (text === null) this.busy.delete(reason);
+		else {
+			this.busy.delete(reason); // re-insert so the newest reason is shown
+			this.busy.set(reason, text);
+		}
 		this.updateStatus();
+	}
+
+	/** Resolves once the first model has been pushed to the renderer. */
+	whenModelReady(): Promise<void> {
+		return this.modelReady;
 	}
 
 	private updateStatus(): void {
 		const m = this.model;
-		const text = this.busy ?? (m ? `${m.stats.notes + m.stats.attachments + m.stats.tags} nodes · ${m.stats.unresolved} uncreated · ${m.stats.links} links${m.stats.indirectLinks ? ` · ${m.stats.indirectLinks} indirect` : ""}` : "");
-		this.toolbar.setStatus(text, this.busy !== null);
+		const busyText = Array.from(this.busy.values()).pop();
+		const text = busyText ?? (m ? `${m.stats.notes + m.stats.attachments + m.stats.tags} nodes · ${m.stats.unresolved} uncreated · ${m.stats.links} links${m.stats.indirectLinks ? ` · ${m.stats.indirectLinks} indirect` : ""}` : "");
+		this.toolbar.setStatus(text, busyText !== undefined);
 	}
 
 	statusLines(): string[] {

@@ -158,6 +158,34 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	await search.blur();
 	await page.waitForTimeout(1200);
 	check("search filter limits notes", await page.H(() => window.harness.controller.debugState().model.nodes.filter((n) => n.kind === "note").every((n) => n.tags.includes("neuro"))));
+	// Regression: editing colour groups while a rebuild is reading note content must win over the rebuild.
+	const stale = await page.H(async () => {
+		const c = window.harness.controller;
+		await c.whenModelReady();
+		c.onViewChange({ key: "colors.useCoreGroups", value: false, final: true });
+		c.onGroupsChange([{ query: "content:spaced", color: "#ff0000", enabled: true }], true);
+		await new Promise((r) => setTimeout(r, 400));
+		await c.refreshData(true); // a committed build already showing the group's colours
+		const before = c.debugState().model.nodes.filter((n) => n.color === "#ff0000").length;
+		// Hold the rebuild inside its note-content read.
+		const source = c["pipeline"]["source"];
+		const read = source.readContent;
+		let release, entered;
+		const gate = new Promise((r) => (release = r));
+		const inside = new Promise((r) => (entered = r));
+		source.readContent = async (path) => (entered(), await gate, read(path));
+		c["pipeline"].invalidate(null);
+		const rebuild = c.refreshData(false);
+		await inside;
+		c["viewSettings"].colors.groups = []; // the user deletes the group meanwhile…
+		await c["refreshColors"](); // …which recolours immediately
+		release();
+		await rebuild;
+		source.readContent = read;
+		await new Promise((r) => setTimeout(r, 200));
+		return { before, after: c.debugState().model.nodes.filter((n) => n.color === "#ff0000").length };
+	});
+	check("a colour-group edit during a rebuild is not overwritten", stale.before > 0 && stale.after === 0, JSON.stringify(stale));
 	await page.close();
 }
 

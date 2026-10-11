@@ -1,4 +1,4 @@
-import { Menu, normalizePath, Notice, setIcon, TFile, TFolder, type App, type HoverParent } from "obsidian";
+import { Keymap, Menu, normalizePath, Notice, setIcon, TFile, TFolder, type App, type HoverParent, type HoverPopover } from "obsidian";
 import { VIEW_TYPE_GRAPH } from "../constants";
 import type { GraphHost, NodeMenuAction } from "../controller/ports";
 import type { GraphNode } from "../core/graph/types";
@@ -74,10 +74,16 @@ export class ObsidianHost implements GraphHost {
 
 	hoverPreview(node: GraphNode, event: MouseEvent, target: HTMLElement): void {
 		if (!node.path || node.kind !== "note") return;
-		// All nodes share one target element (the canvas), and Page preview keeps an open popover
-		// for the same target. Close the previous node's popover so the new node gets its own.
-		this.hoverParent.hoverPopover?.unload();
-		this.hoverParent.hoverPopover = null;
+		const open = this.hoverParent.hoverPopover;
+		const mod = !!Keymap.isModEvent(event);
+		// Re-hovering the node whose preview is already up (nodes move while the layout settles): leave it.
+		if (open && node.path === this.previewPath) return;
+		// All nodes share one target element (the canvas), and Page preview won't replace an open popover
+		// for the same target. Close the previous preview — but only when a new one is about to open
+		// (Mod held, Page preview's default for this source), so crossing other nodes on the way into
+		// a preview doesn't close it.
+		if (open && mod) this.closePreview(open);
+		if (mod) this.previewPath = node.path;
 		this.app.workspace.trigger("hover-link", {
 			event,
 			source: VIEW_TYPE_GRAPH,
@@ -86,6 +92,19 @@ export class ObsidianHost implements GraphHost {
 			linktext: node.path,
 			sourcePath: "",
 		});
+	}
+
+	/** Note whose preview we last asked Page preview to open (Mod-hover). */
+	private previewPath: string | null = null;
+
+	private closePreview(popover: HoverPopover): void {
+		// hide() also cancels a preview still waiting to appear; it isn't in the public typings,
+		// so fall back to unload() (public, via Component) when it's missing.
+		const hideable = popover as HoverPopover & { hide?: () => void };
+		if (typeof hideable.hide === "function") hideable.hide();
+		else popover.unload();
+		if (this.hoverParent.hoverPopover === popover) this.hoverParent.hoverPopover = null;
+		this.previewPath = null;
 	}
 
 	activeNodeId(): string | null {

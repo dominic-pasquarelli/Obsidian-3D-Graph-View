@@ -1,4 +1,4 @@
-import { Plugin, type WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, type WorkspaceLeaf } from "obsidian";
 import { PLUGIN_NAME, VIEW_ICON, VIEW_TYPE_GRAPH } from "./constants";
 import type { SettingsStore } from "./controller/ports";
 import type { GraphMode } from "./core/settings/view";
@@ -69,10 +69,13 @@ export default class GraphViewPlugin extends Plugin {
 		if (!leaf) leaf = await this.openGraph("3d");
 		await this.app.workspace.revealLeaf(leaf);
 		const view = leaf.view instanceof GraphView ? leaf.view : null;
-		// Give a freshly opened view a moment to build its graph.
-		for (let i = 0; i < 20; i++) {
-			if (view?.getController()?.focusNodeById(path)) return;
-			await new Promise((r) => window.setTimeout(r, 250));
-		}
+		if (!view) return;
+		// A freshly opened view builds in the background (large vaults can take a while).
+		const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), 120000));
+		const controller = await Promise.race([view.ready, timeout]);
+		if (!controller) return;
+		// Let the layout take its first steps so the camera has somewhere sensible to fly to.
+		await new Promise((r) => window.setTimeout(r, 300));
+		if (!controller.focusNodeById(path)) new Notice("That note isn't in the graph (check the view's filters).");
 	}
 }

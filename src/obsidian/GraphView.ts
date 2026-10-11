@@ -13,6 +13,9 @@ export class GraphView extends ItemView implements HoverParent {
 	private controller: GraphController | null = null;
 	private pending: ControllerState = {};
 	private startTimer: number | null = null;
+	private resolveReady!: (controller: GraphController) => void;
+	/** Resolves with the controller once the first graph has been built and shown. */
+	readonly ready = new Promise<GraphController>((resolve) => (this.resolveReady = resolve));
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -67,6 +70,7 @@ export class GraphView extends ItemView implements HoverParent {
 				if (leaf === this.leaf) void controller.reloadCoreGraph();
 			}),
 		);
+		void controller.whenModelReady().then(() => this.resolveReady(controller));
 		await controller.start();
 	}
 
