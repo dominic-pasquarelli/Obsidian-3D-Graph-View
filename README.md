@@ -8,7 +8,7 @@ It's built for neural-map style exploration and recall.
 
 | Feature | What it does |
 | --- | --- |
-| **3D and 2D views** | WebGL 3D view and canvas 2D view. Both run the *same* force modules and style rules, so switching keeps the layout logic identical. Each tab remembers its own mode. |
+| **3D and 2D views** | WebGL 3D view and canvas 2D view. Both run the *same* force modules and style rules, so switching keeps the layout logic identical. 2D/3D is a per-tab choice: each tab remembers its mode, and switching profiles never flips it. |
 | **Reference-weighted pull** | Writing `[[B]]` five times in note A makes A↔B a stronger, shorter spring than a single mention. Choose linear / square-root / logarithmic scaling, its influence on pull and distance, and how two-way links combine. |
 | **Notes that don't exist yet** | Unresolved links show as hollow "ghost" nodes. Click one to create the note (optional). The new note keeps the ghost's position. |
 | **Second & third-level gravity** | If A→B→D and A→C→D, D shows up twice as a 2nd-level link of A. Pairs reached through enough 2- or 3-step paths pull towards each other. You can follow link direction or ignore it, which also catches notes that link to the same things. Each level has its own threshold and strength, plus a hub cap and a per-note partner limit. |
@@ -28,7 +28,7 @@ It's built for neural-map style exploration and recall.
 ### Built-in profiles
 
 - **Force:** *Balanced*, *Reference clusters* (strong reference weighting), *Neural* (indirect gravity + group gravity), *Colour-group regions*.
-- **View:** *Default 3D*, *Default 2D*, *Neural glow* (space background, bloom, signal particles, indirect links visible), *Recall* (labels only on hover).
+- **View:** *Default*, *Neural glow* (space background, bloom, signal particles, indirect links visible), *Recall* (labels only on hover).
 
 Built-ins can be edited or deleted. *Settings → Restore built-in profiles* brings them back.
 

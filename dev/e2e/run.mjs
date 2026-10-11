@@ -76,6 +76,10 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	await page.waitForTimeout(3000);
 	check("2D view keeps the same model", (await page.H(() => window.harness.controller.debugState().view.mode)) === "2d");
 	await shot(page, "03-2d-neural");
+	// Profiles never flip the tab's 2D/3D choice (Recall was saved from a 3D tab).
+	await page.locator(".g3d-toolbar-profile select").nth(1).selectOption({ label: "Recall (labels on hover)" });
+	await page.waitForTimeout(800);
+	check("switching view profile keeps the tab in 2D", (await page.H(() => window.harness.controller.debugState().view.mode)) === "2d");
 	await page.close();
 }
 

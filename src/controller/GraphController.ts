@@ -623,7 +623,8 @@ export class GraphController implements PanelContext, ToolbarContext {
 			const profile = data.views.resolve(id);
 			this.viewProfileId = profile.id;
 			data.activeViewProfile = profile.id;
-			this.replaceView(clone(profile.settings));
+			// 2D/3D is a per-tab choice: switching (or reverting) a view profile keeps the tab's mode.
+			this.replaceView({ ...clone(profile.settings), mode: this.viewSettings.mode });
 		}
 		this.emitState();
 		await this.deps.store.save();

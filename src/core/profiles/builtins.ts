@@ -51,8 +51,7 @@ export function builtInForceProfiles(): BuiltInProfile<ForceSettings>[] {
 export function builtInViewProfiles(): BuiltInProfile<ViewSettings>[] {
 	const base = DEFAULT_VIEW_SETTINGS;
 	return [
-		{ key: "default-3d", name: "Default 3D", settings: clone(base) },
-		{ key: "default-2d", name: "Default 2D", settings: withOverrides(base, { mode: "2d" }) },
+		{ key: "default-3d", name: "Default", settings: clone(base) },
 		{
 			key: "neural-glow",
 			name: "Neural glow",
