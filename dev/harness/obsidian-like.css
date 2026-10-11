@@ -1,0 +1,87 @@
+/*
+ * Approximates Obsidian's default theme variables and native form controls so
+ * the harness looks like the real app. Dev-only — the plugin itself relies on
+ * Obsidian (and the user's theme) for these.
+ */
+:root,
+body.theme-dark {
+	--background-primary: #1e1e1e;
+	--background-secondary: #262626;
+	--background-modifier-border: #363636;
+	--background-modifier-border-hover: #4a4a4a;
+	--background-modifier-hover: rgba(255, 255, 255, 0.075);
+	--background-modifier-form-field: #2a2a2a;
+	--text-normal: #dadada;
+	--text-muted: #a3a3a3;
+	--text-faint: #666666;
+	--text-on-accent: #ffffff;
+	--text-error: #fb464c;
+	--text-warning: #e9973f;
+	--interactive-normal: #2f2f2f;
+	--interactive-hover: #3a3a3a;
+	--interactive-accent: #8a5cf5;
+	--interactive-accent-hover: #9a72f7;
+	--font-interface: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Ubuntu, sans-serif;
+	--font-ui-small: 13px;
+	--font-ui-smaller: 12px;
+	--radius-s: 4px;
+	color-scheme: dark;
+}
+body.theme-light {
+	--background-primary: #ffffff;
+	--background-secondary: #f6f6f6;
+	--background-modifier-border: #e0e0e0;
+	--background-modifier-border-hover: #d4d4d4;
+	--background-modifier-hover: rgba(0, 0, 0, 0.06);
+	--background-modifier-form-field: #ffffff;
+	--text-normal: #222222;
+	--text-muted: #5c5c5c;
+	--text-faint: #ababab;
+	--text-error: #e93147;
+	--text-warning: #ec7500;
+	--interactive-normal: #ffffff;
+	--interactive-hover: #f2f2f2;
+	--interactive-accent: #8a5cf5;
+	color-scheme: light;
+}
+html,
+body {
+	margin: 0;
+	height: 100%;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+}
+input[type="text"],
+input[type="search"],
+select {
+	font: inherit;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 3px 8px;
+	height: 26px;
+	box-sizing: border-box;
+	outline: none;
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+select:focus {
+	border-color: var(--interactive-accent);
+}
+select {
+	padding-right: 22px;
+	appearance: none;
+	background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+	background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+	background-size: 4px 4px;
+	background-repeat: no-repeat;
+}
+input[type="range"] {
+	accent-color: var(--interactive-accent);
+}
+input[type="color"] {
+	cursor: pointer;
+}

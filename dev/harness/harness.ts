@@ -8,7 +8,7 @@ import { createMockVault } from "./mockVault";
 
 /**
  * Dev harness: runs the real GraphController against a synthetic vault in a
- * plain browser page. Query params: ?n=<notes>&mode=2d|3d&worker=always|never|auto&physics=auto|main|worker&reset=1&panel=0
+ * plain browser page. Query params: ?n=<notes>&mode=2d|3d&theme=light|dark&worker=always|never|auto&physics=auto|main|worker&reset=1&panel=0
  */
 const params = new URLSearchParams(location.search);
 const noteCount = Number(params.get("n") ?? 400);
@@ -16,6 +16,8 @@ const STORAGE_KEY = "3d-graph-view-harness";
 if (params.get("reset")) localStorage.removeItem(STORAGE_KEY);
 
 const vault = createMockVault(noteCount);
+const light = params.get("theme") === "light";
+document.body.classList.add(light ? "theme-light" : "theme-dark");
 const log: { type: string; detail: unknown }[] = [];
 const record = (type: string, detail: unknown) => {
 	log.push({ type, detail });
@@ -36,7 +38,10 @@ const source: GraphDataSource = {
 
 const savedFiles = new Map<string, string>();
 const host: GraphHost = {
-	theme: () => ({ background: "#1e1e1e", text: "#dcddde", textMuted: "#8b8f98", accent: "#8b7cf6", isDark: true }),
+	theme: () =>
+		light
+			? { background: "#ffffff", text: "#222222", textMuted: "#5c5c5c", accent: "#8a5cf5", isDark: false }
+			: { background: "#1e1e1e", text: "#dadada", textMuted: "#a3a3a3", accent: "#8a5cf5", isDark: true },
 	openNode: (node: GraphNode, newTab: boolean) => record("open", { id: node.id, kind: node.kind, newTab }),
 	showNodeMenu(node: GraphNode, event: MouseEvent, actions: NodeMenuAction[]) {
 		document.querySelector(".harness-menu")?.remove();
