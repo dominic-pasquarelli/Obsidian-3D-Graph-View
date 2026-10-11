@@ -1,0 +1,344 @@
+/* 3D Graph View — uses Obsidian theme variables with fallbacks so the dev harness looks right too. */
+
+.g3d-root {
+	--g3d-bg: var(--background-primary, #1e1e1e);
+	--g3d-bg-alt: var(--background-secondary, #262626);
+	--g3d-border: var(--background-modifier-border, #3a3a3a);
+	--g3d-text: var(--text-normal, #dcddde);
+	--g3d-muted: var(--text-muted, #999);
+	--g3d-faint: var(--text-faint, #666);
+	--g3d-accent: var(--interactive-accent, #7f6df2);
+	--g3d-accent-text: var(--text-on-accent, #fff);
+	--g3d-hover: var(--background-modifier-hover, rgba(255, 255, 255, 0.06));
+	--g3d-error: var(--text-error, #e5534b);
+	--g3d-radius: var(--radius-s, 4px);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	color: var(--g3d-text);
+	font-size: var(--font-ui-small, 13px);
+}
+
+.g3d-view {
+	padding: 0 !important;
+	overflow: hidden !important;
+}
+
+/* ---------- toolbar ---------- */
+.g3d-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--g3d-border);
+	background: var(--g3d-bg);
+}
+.g3d-toolbar-spacer {
+	flex: 1;
+}
+.g3d-toolbar-profile {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.g3d-toolbar-label {
+	color: var(--g3d-muted);
+	font-size: var(--font-ui-smaller, 12px);
+}
+.g3d-toolbar-status {
+	color: var(--g3d-muted);
+	font-size: var(--font-ui-smaller, 12px);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 40%;
+}
+.g3d-toolbar-status.is-busy::before {
+	content: "";
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	margin-right: 6px;
+	border-radius: 50%;
+	background: var(--g3d-accent);
+	animation: g3d-pulse 1s ease-in-out infinite;
+}
+@keyframes g3d-pulse {
+	50% {
+		opacity: 0.3;
+	}
+}
+.g3d-find {
+	width: 150px;
+}
+.g3d-find.is-not-found {
+	outline: 1px solid var(--g3d-error);
+}
+.g3d-segmented {
+	display: inline-flex;
+	border: 1px solid var(--g3d-border);
+	border-radius: var(--g3d-radius);
+	overflow: hidden;
+}
+.g3d-segmented .g3d-btn {
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	padding: 2px 10px;
+}
+.g3d-btn {
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 12px);
+	padding: 3px 8px;
+	border-radius: var(--g3d-radius);
+	border: 1px solid var(--g3d-border);
+	background: var(--interactive-normal, var(--g3d-bg-alt));
+	color: var(--g3d-text);
+}
+.g3d-btn:hover {
+	background: var(--interactive-hover, var(--g3d-hover));
+}
+.g3d-btn.is-active,
+.g3d-btn.mod-cta {
+	background: var(--g3d-accent);
+	color: var(--g3d-accent-text);
+	border-color: var(--g3d-accent);
+}
+.g3d-btn.mod-warning {
+	color: var(--g3d-error);
+}
+.g3d-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 26px;
+	height: 26px;
+	padding: 0 6px;
+}
+.g3d-icon-btn svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* ---------- body ---------- */
+.g3d-body {
+	position: relative;
+	display: flex;
+	flex: 1;
+	min-height: 0;
+}
+.g3d-canvas {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+}
+.g3d-panel {
+	width: 330px;
+	flex-shrink: 0;
+	overflow-y: auto;
+	border-left: 1px solid var(--g3d-border);
+	background: var(--g3d-bg);
+	padding: 6px 10px 24px;
+}
+.g3d-panel.is-hidden {
+	display: none;
+}
+.g3d-panel-title {
+	margin: 14px 0 4px;
+	font-size: var(--font-ui-smaller, 12px);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--g3d-muted);
+}
+.g3d-section {
+	border-bottom: 1px solid var(--g3d-border);
+	padding: 2px 0;
+}
+.g3d-section > summary {
+	cursor: pointer;
+	padding: 6px 0;
+	font-weight: 600;
+	list-style-position: inside;
+}
+.g3d-section-body {
+	padding: 0 0 8px;
+}
+.g3d-section-desc,
+.g3d-ctl-desc,
+.g3d-muted {
+	color: var(--g3d-muted);
+	font-size: var(--font-ui-smaller, 12px);
+	margin: 2px 0 6px;
+	line-height: 1.35;
+}
+
+/* ---------- controls ---------- */
+.g3d-ctl {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 0;
+}
+.g3d-ctl-wide {
+	flex-direction: column;
+	align-items: stretch;
+}
+.g3d-ctl-wide .g3d-ctl-input input {
+	width: 100%;
+}
+.g3d-ctl-info {
+	flex: 1;
+	min-width: 0;
+}
+.g3d-ctl-input {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+.g3d-ctl-slider .g3d-ctl-input input[type="range"] {
+	width: 110px;
+}
+.g3d-ctl-value {
+	min-width: 34px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	color: var(--g3d-muted);
+	font-size: var(--font-ui-smaller, 12px);
+}
+.g3d-ctl-heading {
+	margin-top: 10px;
+	font-weight: 600;
+	color: var(--g3d-text);
+}
+.g3d-select {
+	max-width: 170px;
+	font-size: var(--font-ui-smaller, 12px);
+}
+.g3d-switch {
+	position: relative;
+	display: inline-block;
+	width: 32px;
+	height: 18px;
+}
+.g3d-switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+.g3d-switch-slider {
+	position: absolute;
+	inset: 0;
+	cursor: pointer;
+	border-radius: 9px;
+	background: var(--background-modifier-border-hover, #555);
+	transition: background 0.15s;
+}
+.g3d-switch-slider::before {
+	content: "";
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	left: 2px;
+	top: 2px;
+	border-radius: 50%;
+	background: #fff;
+	transition: transform 0.15s;
+}
+.g3d-switch input:checked + .g3d-switch-slider {
+	background: var(--g3d-accent);
+}
+.g3d-switch input:checked + .g3d-switch-slider::before {
+	transform: translateX(14px);
+}
+.g3d-switch input:focus-visible + .g3d-switch-slider {
+	outline: 2px solid var(--g3d-accent);
+	outline-offset: 2px;
+}
+
+/* ---------- profiles ---------- */
+.g3d-profile {
+	padding: 6px 0;
+}
+.g3d-profile-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.g3d-profile-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 6px;
+}
+.g3d-dirty {
+	color: var(--g3d-accent);
+}
+
+/* ---------- colour groups ---------- */
+.g3d-groups {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 6px 0;
+}
+.g3d-group-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.g3d-group-query {
+	flex: 1;
+	min-width: 0;
+}
+.g3d-group-row input[type="color"] {
+	width: 28px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	background: none;
+}
+.g3d-add-btn {
+	margin-top: 2px;
+}
+.g3d-warnings {
+	margin: 4px 0;
+	padding-left: 18px;
+	color: var(--text-warning, #d29922);
+	font-size: var(--font-ui-smaller, 12px);
+}
+.g3d-status-line {
+	font-variant-numeric: tabular-nums;
+	color: var(--g3d-muted);
+	padding: 1px 0;
+}
+
+/* ---------- tooltip (rendered by the graph libraries) ---------- */
+.g3d-tooltip {
+	font-family: var(--font-interface, system-ui, sans-serif);
+	padding: 2px 4px;
+}
+.g3d-tooltip-title {
+	font-weight: 600;
+}
+.g3d-tooltip-kind {
+	font-style: italic;
+	opacity: 0.8;
+}
+.g3d-tooltip-meta {
+	opacity: 0.7;
+	font-size: 11px;
+}
+.g3d-canvas .float-tooltip-kap {
+	background: var(--background-secondary, rgba(0, 0, 0, 0.8));
+	color: var(--g3d-text);
+	border: 1px solid var(--g3d-border);
+	border-radius: var(--g3d-radius);
+	font-size: 12px;
+}
