@@ -1,0 +1,42 @@
+{
+  "name": "obsidian-3d-graph-view",
+  "version": "0.1.0",
+  "description": "A modular 3D/2D graph view for Obsidian with reference-weighted links, ghost notes, indirect-link gravity and saveable force/view profiles.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "npm run typecheck && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "harness": "node esbuild.config.mjs harness",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "e2e": "node esbuild.config.mjs harness-build && node dev/e2e/run.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "graph",
+    "3d"
+  ],
+  "author": "Dominic Pasquarelli",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "playwright": "^1.56.1",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "3d-force-graph": "^1.80.1",
+    "d3-force-3d": "^3.0.6",
+    "force-graph": "^1.52.0",
+    "three": "^0.186.1",
+    "three-spritetext": "^1.10.0"
+  }
+}

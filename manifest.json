@@ -1,0 +1,9 @@
+{
+  "id": "3d-graph-view",
+  "name": "3D Graph View",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Explore your vault as a 3D or 2D force graph: reference-weighted pull, not-yet-created notes, second/third-level link gravity, imported color groups and saveable force/view profiles.",
+  "author": "Dominic Pasquarelli",
+  "isDesktopOnly": true
+}

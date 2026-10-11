@@ -1,0 +1,7 @@
+node_modules/
+main.js
+*.map
+dev/harness/dist/
+coverage/
+.DS_Store
+data.json
