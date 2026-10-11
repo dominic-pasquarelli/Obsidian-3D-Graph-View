@@ -1,0 +1,190 @@
+import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
+import type { LinkForce } from "d3-force-3d";
+import { Vector2 } from "three";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import type { GraphLink, GraphNode } from "../core/graph/types";
+import { LibraryForceEngine, type ForceGraphLike } from "./engine";
+import { LabelLayer3D } from "./LabelLayer3D";
+import { LinkBatch3D } from "./LinkBatch3D";
+import type { StyleResolver } from "./style";
+import { nodeTooltip } from "./tooltip";
+import { stripPrivateKeys, type GraphRenderer, type RendererOptions } from "./types";
+
+type Instance = ForceGraph3DInstance<GraphNode, GraphLink>;
+
+/** WebGL renderer backed by 3d-force-graph (three.js + d3-force-3d). */
+export class Renderer3D implements GraphRenderer {
+	readonly dims = 3 as const;
+	readonly engine: LibraryForceEngine;
+	private graph: Instance;
+	private style: StyleResolver;
+	private labels: LabelLayer3D;
+	private bloom: UnrealBloomPass | null = null;
+	/** Present on large graphs: ordinary links drawn in one batch, highlighted ones by the library. */
+	private batch: LinkBatch3D | null = null;
+	private nodes: GraphNode[] = [];
+	private links: GraphLink[] = [];
+	private size = { width: 1, height: 1 };
+	private releaseGuard: () => void;
+
+	constructor(private readonly options: RendererOptions) {
+		this.style = options.style;
+		const { container, events } = options;
+		const Ctor = ForceGraph3D as unknown as new (el: HTMLElement, cfg: object) => Instance;
+		this.graph = new Ctor(container, { controlType: options.controls3d });
+		const g = this.graph;
+		g.showNavInfo(false)
+			.nodeRelSize(1)
+			.nodeOpacity(1)
+			.linkOpacity(1)
+			.nodeVal((n) => Math.pow(this.style.nodeRadius(n), 3))
+			.nodeColor((n) => this.style.nodeColor(n))
+			.nodeLabel((n) => (this.style.view.labels.mode === "never" ? "" : nodeTooltip(n)))
+			.linkVisibility((l) => this.style.linkVisible(l) && (!this.batch || this.style.isLinkHighlighted(l)))
+			.linkColor((l) => this.style.linkColor(l))
+			.linkWidth((l) => this.linkWidth(l))
+			.linkDirectionalArrowLength((l) => this.style.arrowLength(l))
+			.linkDirectionalArrowRelPos(1)
+			.linkDirectionalArrowColor((l) => this.style.linkColor(l))
+			.linkDirectionalParticles((l) => this.style.linkParticles(l))
+			.linkDirectionalParticleWidth(1.6)
+			.linkDirectionalParticleColor(() => this.style.particleColor())
+			.onNodeClick((n, e) => events.onNodeClick(n, e))
+			.onNodeRightClick((n, e) => events.onNodeRightClick(n, e))
+			.onNodeHover((n) => {
+				container.style.cursor = n ? "pointer" : "";
+				events.onNodeHover(n);
+			})
+			.onNodeDrag((n) => events.onNodeDrag(n))
+			.onNodeDragEnd((n) => events.onNodeDragEnd(n))
+			.onBackgroundClick((e) => events.onBackgroundClick(e));
+		this.engine = new LibraryForceEngine(g as unknown as ForceGraphLike, 3);
+		this.releaseGuard = guardSyntheticPointerUp(container.ownerDocument);
+		this.labels = new LabelLayer3D(g.scene(), this.style);
+		g.onEngineTick(() => this.batch?.updatePositions());
+		this.applySettings();
+	}
+
+	/** Thin GL lines for big graphs (one draw call is cheaper than a cylinder mesh). */
+	private linkWidth(link: GraphLink): number {
+		const width = this.style.linkWidth(link);
+		const tier = this.style.plan.tier;
+		if (tier === "small" || tier === "medium" || this.style.isLinkHighlighted(link)) return width;
+		return 0;
+	}
+
+	setData(nodes: GraphNode[], links: GraphLink[]): void {
+		this.nodes = nodes;
+		this.links = links;
+		this.graph.graphData({ nodes, links });
+		this.batch?.setLinks(links);
+		this.labels.sync();
+	}
+
+	linkForce(): LinkForce<GraphNode, GraphLink> | undefined {
+		return this.graph.d3Force("link") as unknown as LinkForce<GraphNode, GraphLink> | undefined;
+	}
+
+	refreshStyle(): void {
+		const g = this.graph;
+		g.nodeColor(g.nodeColor())
+			.nodeVal(g.nodeVal())
+			.linkColor(g.linkColor())
+			.linkWidth(g.linkWidth())
+			.linkVisibility(g.linkVisibility())
+			.linkDirectionalArrowLength(g.linkDirectionalArrowLength())
+			.linkDirectionalParticles(g.linkDirectionalParticles());
+		this.batch?.updateColors();
+		this.labels.sync();
+	}
+
+	applySettings(): void {
+		const { view, plan } = this.style;
+		this.graph.backgroundColor(this.style.background()).nodeResolution(plan.nodeResolution).linkDirectionalParticleSpeed(view.links.particleSpeed);
+		this.setBloom(view.style.bloom && plan.allowBloom, view.style.bloomStrength);
+		if (plan.batchLinks && !this.batch) {
+			this.batch = new LinkBatch3D(this.graph.scene(), this.style);
+			this.batch.setLinks(this.links);
+		} else if (!plan.batchLinks && this.batch) {
+			this.batch.dispose();
+			this.batch = null;
+		} else this.batch?.setLinks(this.links);
+		this.refreshStyle();
+	}
+
+	private setBloom(enabled: boolean, strength: number): void {
+		const composer = this.graph.postProcessingComposer();
+		if (!enabled) {
+			if (this.bloom) {
+				composer.removePass(this.bloom);
+				this.bloom.dispose();
+				this.bloom = null;
+			}
+			return;
+		}
+		if (!this.bloom) {
+			this.bloom = new UnrealBloomPass(new Vector2(this.size.width, this.size.height), strength, 0.55, 0.05);
+			composer.addPass(this.bloom);
+		}
+		this.bloom.strength = strength;
+	}
+
+	resize(width: number, height: number): void {
+		this.size = { width: Math.max(1, width), height: Math.max(1, height) };
+		this.graph.width(this.size.width).height(this.size.height);
+		this.bloom?.setSize(this.size.width, this.size.height);
+	}
+
+	focusNode(node: GraphNode, durationMs = 900): void {
+		const x = node.x ?? 0;
+		const y = node.y ?? 0;
+		const z = node.z ?? 0;
+		const distance = 80 + this.style.nodeRadius(node) * 8;
+		const ratio = 1 + distance / Math.max(1, Math.hypot(x, y, z));
+		this.graph.cameraPosition({ x: x * ratio, y: y * ratio, z: z * ratio }, { x, y, z }, durationMs);
+	}
+
+	screenPosition(node: GraphNode): { x: number; y: number } | null {
+		if (!Number.isFinite(node.x)) return null;
+		const p = this.graph.graph2ScreenCoords(node.x ?? 0, node.y ?? 0, node.z ?? 0);
+		return { x: p.x, y: p.y };
+	}
+
+	zoomToFit(durationMs = 600): void {
+		this.graph.zoomToFit(durationMs, 40);
+	}
+
+	reheat(): void {
+		this.graph.d3ReheatSimulation();
+	}
+
+	dispose(): void {
+		this.releaseGuard();
+		this.labels.dispose();
+		this.batch?.dispose();
+		this.batch = null;
+		this.setBloom(false, 0);
+		const renderer = this.graph.renderer();
+		this.graph.pauseAnimation();
+		this.graph._destructor();
+		renderer.dispose();
+		renderer.forceContextLoss();
+		stripPrivateKeys(this.nodes);
+		stripPrivateKeys(this.links);
+		this.options.container.replaceChildren();
+	}
+}
+
+/**
+ * 3d-force-graph dispatches a synthetic touch "pointerup" on the document after a
+ * node drag. three's OrbitControls then looks up a pointer position it never
+ * recorded and throws. The real pointerup that follows already releases the
+ * controls, so the synthetic one can be dropped safely.
+ */
+function guardSyntheticPointerUp(doc: Document): () => void {
+	const swallow = (e: PointerEvent) => {
+		if (!e.isTrusted && e.pointerType === "touch" && e.pointerId === 0) e.stopImmediatePropagation();
+	};
+	doc.addEventListener("pointerup", swallow, true);
+	return () => doc.removeEventListener("pointerup", swallow, true);
+}
