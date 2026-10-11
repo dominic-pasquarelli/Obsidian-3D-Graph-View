@@ -46,12 +46,13 @@ export class GraphSettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Profile folder")
 			.setDesc("Vault folder used to export and import profile files (shareable JSON).")
-			.addText((t) =>
-				t.setValue(data.profileFolder).onChange(async (v) => {
-					data.profileFolder = v.trim() || "Graph profiles";
+			.addText((t) => {
+				t.setValue(data.profileFolder);
+				t.inputEl.addEventListener("change", async () => {
+					data.profileFolder = t.getValue().trim() || "Graph profiles";
 					await store.save();
-				}),
-			);
+				});
+			});
 		new Setting(containerEl)
 			.setName("Restore built-in profiles")
 			.setDesc("Re-adds the shipped profiles and resets them to their original values. Your own profiles are kept.")
@@ -112,14 +113,13 @@ export class GraphSettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Physics background threshold")
 			.setDesc("Graph size (nodes + links ÷ 2) at which automatic physics moves to the background worker.")
-			.addText((t) =>
-				t.setValue(String(data.performance.physicsThreshold)).onChange(async (v) => {
-					const n = Number(v);
-					if (!Number.isFinite(n) || n < 0) return;
-					data.performance.physicsThreshold = Math.round(n);
+			.addText((t) => {
+				t.setValue(String(data.performance.physicsThreshold));
+				onCommit(t.inputEl, async (v) => {
+					data.performance.physicsThreshold = v;
 					await store.save();
-				}),
-			);
+				});
+			});
 		new Setting(containerEl)
 			.setName("Background computation")
 			.setDesc("Where second/third-level link maths runs. Automatic uses a background worker once the graph is large.")
@@ -135,13 +135,23 @@ export class GraphSettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Background computation threshold")
 			.setDesc("Graph size (nodes + links ÷ 2) at which automatic mode computes indirect links in the background worker.")
-			.addText((t) =>
-				t.setValue(String(data.performance.workerThreshold)).onChange(async (v) => {
-					const n = Number(v);
-					if (!Number.isFinite(n) || n < 0) return;
-					data.performance.workerThreshold = Math.round(n);
+			.addText((t) => {
+				t.setValue(String(data.performance.workerThreshold));
+				onCommit(t.inputEl, async (v) => {
+					data.performance.workerThreshold = v;
 					await store.save();
-				}),
-			);
+				});
+			});
 	}
+}
+
+/**
+ * Saves a non-negative whole number when the field is committed (blur / Enter), not on every
+ * keystroke — each save re-plans every open graph view.
+ */
+function onCommit(input: HTMLInputElement, save: (value: number) => Promise<void>): void {
+	input.addEventListener("change", () => {
+		const n = Number(input.value);
+		if (Number.isFinite(n) && n >= 0) void save(Math.round(n));
+	});
 }

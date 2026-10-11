@@ -23,6 +23,8 @@ export class WorkerPhysics {
 	private latest: Float32Array | null = null;
 	private finished = false;
 	private active = false;
+	/** Bumped on every start(); worker messages from an older run are ignored. */
+	private epoch = 0;
 
 	constructor(
 		private readonly source: string,
@@ -38,7 +40,8 @@ export class WorkerPhysics {
 		this.url = URL.createObjectURL(new Blob([this.source], { type: "text/javascript" }));
 		const worker = new Worker(this.url);
 		worker.onmessage = (e: MessageEvent) => {
-			const data = e.data as { kind?: string; positions?: Float32Array; done?: boolean; error?: string };
+			const data = e.data as { kind?: string; epoch?: number; positions?: Float32Array; done?: boolean; error?: string };
+			if (data.epoch !== this.epoch) return; // left over from a previous graph / node order
 			if (data.kind === "sim:positions" && data.positions) {
 				this.latest = data.positions;
 				if (data.done) this.finished = true;
@@ -64,7 +67,8 @@ export class WorkerPhysics {
 		this.latest = null;
 		this.finished = false;
 		this.active = true;
-		worker.postMessage({ kind: "sim:init", init: simInitFromModel(model, links, renderer.dims, settings, plan) });
+		this.epoch++;
+		worker.postMessage({ kind: "sim:init", epoch: this.epoch, init: simInitFromModel(model, links, renderer.dims, settings, plan) });
 		renderer.engine.setForce(WORKER_SYNC_FORCE, this.syncForce());
 		renderer.engine.setSimulation({ alphaDecay: 0, cooldownTime: RUN_FOREVER, warmupTicks: 0 });
 		renderer.reheat();
@@ -125,6 +129,7 @@ export class WorkerPhysics {
 	stop(): void {
 		if (!this.active) return;
 		this.active = false;
+		this.epoch++;
 		this.worker?.postMessage({ kind: "sim:stop" });
 		this.renderer?.engine.setForce(WORKER_SYNC_FORCE, null);
 		this.renderer = null;

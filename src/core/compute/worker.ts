@@ -16,6 +16,8 @@ const ctx = self as unknown as WorkerScope;
 let runner: SimulationRunner | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let firstStep = false;
+/** Echoed back so the main thread can drop positions computed for a previous graph. */
+let epoch = 0;
 
 function loop(): void {
 	timer = null;
@@ -23,10 +25,10 @@ function loop(): void {
 	try {
 		const { positions, done } = runner.step(firstStep ? 120 : 14);
 		firstStep = false;
-		ctx.postMessage({ kind: "sim:positions", positions, done }, [positions.buffer]);
+		ctx.postMessage({ kind: "sim:positions", epoch, positions, done }, [positions.buffer]);
 		if (!done) timer = setTimeout(loop, 0);
 	} catch (err) {
-		ctx.postMessage({ kind: "sim:error", error: err instanceof Error ? err.message : String(err) });
+		ctx.postMessage({ kind: "sim:error", epoch, error: err instanceof Error ? err.message : String(err) });
 	}
 }
 
@@ -37,6 +39,7 @@ function kick(): void {
 function handleSim(data: { kind: string } & Record<string, unknown>): void {
 	switch (data.kind) {
 		case "sim:init":
+			epoch = typeof data.epoch === "number" ? data.epoch : epoch + 1;
 			runner = new SimulationRunner();
 			runner.init(data.init as SimInit);
 			firstStep = true;
@@ -69,7 +72,7 @@ ctx.onmessage = (e: MessageEvent) => {
 		try {
 			handleSim(data as { kind: string } & Record<string, unknown>);
 		} catch (err) {
-			ctx.postMessage({ kind: "sim:error", error: err instanceof Error ? err.message : String(err) });
+			ctx.postMessage({ kind: "sim:error", epoch, error: err instanceof Error ? err.message : String(err) });
 		}
 		return;
 	}

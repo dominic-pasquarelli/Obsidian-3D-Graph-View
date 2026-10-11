@@ -24,8 +24,10 @@ const CONTENT_BATCH = 64;
  */
 export class GraphPipeline {
 	private content = new Map<string, string | null>();
-	private modelVersion = 0;
-	private augmentCache = new Map<string, { key: string; version: number; links: GraphLink[] }>();
+	/** Reads in flight, so concurrent stages never read the same note twice. */
+	private reading = new Map<string, Promise<string | null>>();
+	/** Per module: the last augment result, tied to the exact model object it was computed for. */
+	private augmentCache = new Map<string, { key: string; model: GraphModel; links: GraphLink[] }>();
 	private files = new Map<string, SnapshotFile>();
 	filterWarnings: string[] = [];
 	colorWarnings: string[] = [];
@@ -41,12 +43,26 @@ export class GraphPipeline {
 		else for (const p of changedPaths) this.content.delete(p);
 	}
 
+	private read(path: string): Promise<string | null> {
+		let pending = this.reading.get(path);
+		if (!pending) {
+			pending = this.source
+				.readContent(path)
+				.catch(() => null)
+				.then((text) => {
+					this.reading.delete(path);
+					this.content.set(path, text);
+					return text;
+				});
+			this.reading.set(path, pending);
+		}
+		return pending;
+	}
+
 	private async loadContent(paths: string[]): Promise<void> {
 		const missing = paths.filter((p) => !this.content.has(p));
 		for (let i = 0; i < missing.length; i += CONTENT_BATCH) {
-			const batch = missing.slice(i, i + CONTENT_BATCH);
-			const texts = await Promise.all(batch.map((p) => this.source.readContent(p).catch(() => null)));
-			batch.forEach((p, j) => this.content.set(p, texts[j]));
+			await Promise.all(missing.slice(i, i + CONTENT_BATCH).map((p) => this.read(p)));
 		}
 	}
 
@@ -81,23 +97,27 @@ export class GraphPipeline {
 			}
 			includeFile = (file) => evaluate(parsed.root, this.fileFacts(file));
 		}
-		const model = buildGraph(snapshot, { filters: view.filters, includeFile, previous: previous?.nodeById });
-		this.modelVersion++;
-		return model;
+		return buildGraph(snapshot, { filters: view.filters, includeFile, previous: previous?.nodeById });
 	}
 
-	async applyColors(model: GraphModel, groups: ColorGroup[], contentQueries: boolean): Promise<void> {
+	/**
+	 * Assigns node.color / node.group from the first matching group.
+	 * `isCurrent` is checked after any await; when it says no, nothing is written and false is returned.
+	 */
+	async applyColors(model: GraphModel, groups: ColorGroup[], contentQueries: boolean, isCurrent: () => boolean = () => true): Promise<boolean> {
 		const compiled = compileGroups(groups);
 		this.colorWarnings = compiled.flatMap((c) => c.warnings.map((w) => `${c.group.query}: ${w}`));
 		if (compiled.some((c) => c.needsContent)) {
 			if (contentQueries) await this.loadContent(model.nodes.filter((n) => n.kind === "note" && n.path).map((n) => n.path!));
 			else this.colorWarnings.push("Content search is off in settings, so plain words only match file names.");
 		}
+		if (!isCurrent()) return false;
 		for (const node of model.nodes) {
 			const hit = compiled.length ? matchGroup(compiled, this.nodeFacts(node)) : null;
 			node.group = hit ? hit.index : -1;
 			node.color = hit ? hit.group.color : undefined;
 		}
+		return true;
 	}
 
 	async augment(model: GraphModel, forces: ForceSettings, plan: PerformancePlan): Promise<AugmentResult> {
@@ -109,7 +129,7 @@ export class GraphPipeline {
 			const settings = forces[module.id] ?? module.defaults;
 			const key = module.augmentKey ? module.augmentKey(settings) : JSON.stringify(settings);
 			const cached = this.augmentCache.get(module.id);
-			if (cached && cached.key === key && cached.version === this.modelVersion) {
+			if (cached && cached.key === key && cached.model === model) {
 				links.push(...cached.links);
 				if (cached.links.length) ranOn = ranOn === "none" ? "cache" : ranOn;
 				continue;
@@ -126,7 +146,7 @@ export class GraphPipeline {
 				},
 				settings,
 			);
-			this.augmentCache.set(module.id, { key, version: this.modelVersion, links: produced });
+			this.augmentCache.set(module.id, { key, model, links: produced });
 			links.push(...produced);
 		}
 		return { links, ranOn, ms: performance.now() - started };

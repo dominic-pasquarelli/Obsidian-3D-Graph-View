@@ -66,6 +66,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 	private stateListeners = new Set<() => void>();
 	private warningKey = "";
 	private fingerprint = "";
+	private colorGen = 0;
 	private physics: WorkerPhysics | null = null;
 	private physicsBroken = false;
 	readonly setIcon?: (el: HTMLElement, icon: string) => void;
@@ -102,6 +103,8 @@ export class GraphController implements PanelContext, ToolbarContext {
 
 	async start(): Promise<void> {
 		this.coreConfig = await this.deps.source.readCoreGraphConfig().catch(() => null);
+		// The view may have been closed while we were waiting; don't attach anything to a disposed controller.
+		if (this.disposed) return;
 		this.toolbar.render();
 		this.panel.render();
 		this.style.configure(this.viewSettings, this.plan, this.deps.host.theme());
@@ -184,15 +187,18 @@ export class GraphController implements PanelContext, ToolbarContext {
 	 */
 	async refreshData(force = true): Promise<void> {
 		const gen = ++this.dataGen;
-		this.augmentGen++;
 		this.setBusy("Building graph…");
 		try {
 			const model = await this.pipeline.buildModel(this.viewSettings, this.contentQueries, this.model);
 			if (gen !== this.dataGen || this.disposed) return;
-			await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries);
+			const colorGen = ++this.colorGen;
+			await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.dataGen && !this.disposed);
 			if (gen !== this.dataGen || this.disposed) return;
 			const fingerprint = modelFingerprint(model);
+			// Nothing structural changed: keep the current data and any indirect-link computation in flight.
 			if (!force && this.model && fingerprint === this.fingerprint) return;
+			// Only now invalidate in-flight indirect links — they belong to the model being replaced.
+			this.augmentGen++;
 			this.fingerprint = fingerprint;
 			this.model = model;
 			this.plan = planPerformance(model.nodes.length, model.links.length, this.deps.store.data.performance);
@@ -201,6 +207,8 @@ export class GraphController implements PanelContext, ToolbarContext {
 			this.style.setActive(this.deps.host.activeNodeId());
 			this.pushData();
 			this.scheduleFit();
+			// Colour groups were edited while this build was colouring: recolour with the latest groups.
+			if (colorGen !== this.colorGen) void this.refreshColors();
 			await this.refreshAugment(true);
 		} catch (err) {
 			console.error("[3d-graph-view] failed to build graph", err);
@@ -258,8 +266,10 @@ export class GraphController implements PanelContext, ToolbarContext {
 	private async refreshColors(): Promise<void> {
 		const model = this.model;
 		if (!model) return;
-		await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries);
-		if (model !== this.model) return;
+		const gen = ++this.colorGen;
+		// Only the newest request may write colours (an older, slower one would paint stale groups).
+		const applied = await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.colorGen && model === this.model && !this.disposed);
+		if (!applied) return;
 		this.renderer?.refreshStyle();
 		if ((this.forceSettings.groups as { enabled?: boolean } | undefined)?.enabled) this.reapplyForces();
 		this.refreshWarnings();

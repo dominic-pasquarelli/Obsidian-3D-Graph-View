@@ -73,4 +73,45 @@ describe("GraphPipeline (integration)", () => {
 		b.nodeById.get("A.md")!.color = "#123456";
 		expect(modelFingerprint(b)).not.toBe(fa);
 	});
+
+	it("ties cached indirect links to the model they were computed for", async () => {
+		const pipeline = new GraphPipeline(source(), new AdaptiveExecutor(null));
+		const view = clone(DEFAULT_VIEW_SETTINGS);
+		const forces = defaultForceSettings();
+		(forces.indirect as { enabled: boolean }).enabled = true;
+		const first = await pipeline.buildModel(view, true);
+		const plan = planPerformance(first.nodes.length, first.links.length, DEFAULT_PERFORMANCE_PREFS);
+		// A rebuild lands while the first computation is still running.
+		const pending = pipeline.augment(first, forces, plan);
+		const second = await pipeline.buildModel(view, true, first);
+		expect((await pending).ranOn).toBe("main");
+		expect((await pipeline.augment(second, forces, plan)).ranOn).toBe("main");
+		expect((await pipeline.augment(second, forces, plan)).ranOn).toBe("cache");
+	});
+
+	it("does not write colours when the request went stale", async () => {
+		const pipeline = new GraphPipeline(source({ "B.md": "recall" }), new AdaptiveExecutor(null));
+		const model = await pipeline.buildModel(clone(DEFAULT_VIEW_SETTINGS), true);
+		const applied = await pipeline.applyColors(model, [{ query: "recall", color: "#00ff00", enabled: true }], true, () => false);
+		expect(applied).toBe(false);
+		expect(model.nodeById.get("B.md")!.color).toBeUndefined();
+	});
+
+	it("reads each note once even when stages ask concurrently", async () => {
+		const reads: string[] = [];
+		const base = source({ "B.md": "recall" });
+		const counting: GraphDataSource = {
+			...base,
+			readContent: async (path) => {
+				reads.push(path);
+				await new Promise((r) => setTimeout(r, 5));
+				return base.readContent(path);
+			},
+		};
+		const pipeline = new GraphPipeline(counting, new AdaptiveExecutor(null));
+		const model = await pipeline.buildModel(clone(DEFAULT_VIEW_SETTINGS), true);
+		const groups = [{ query: "recall", color: "#00ff00", enabled: true }];
+		await Promise.all([pipeline.applyColors(model, groups, true), pipeline.applyColors(model, groups, true)]);
+		expect(reads.filter((p) => p === "B.md")).toHaveLength(1);
+	});
 });

@@ -36,7 +36,12 @@ export class GraphView extends ItemView implements HoverParent {
 	override async onOpen(): Promise<void> {
 		this.contentEl.addClass("g3d-view");
 		// setState() usually follows onOpen; give it a moment so we start with the right profiles.
-		this.startTimer = window.setTimeout(() => void this.start(), 30);
+		this.startTimer = window.setTimeout(() => this.startInBackground(), 30);
+	}
+
+	/** Never make Obsidian wait for a graph build (setState is awaited during layout restore). */
+	private startInBackground(): void {
+		this.start().catch((err) => console.error("[3d-graph-view] failed to start graph view", err));
 	}
 
 	private async start(): Promise<void> {
@@ -71,7 +76,7 @@ export class GraphView extends ItemView implements HoverParent {
 			if (s.mode) this.controller.setMode(s.mode);
 		} else {
 			this.pending = { ...this.pending, ...s };
-			await this.start();
+			this.startInBackground();
 		}
 		await super.setState(state, result);
 	}

@@ -74,6 +74,10 @@ export class ObsidianHost implements GraphHost {
 
 	hoverPreview(node: GraphNode, event: MouseEvent, target: HTMLElement): void {
 		if (!node.path || node.kind !== "note") return;
+		// All nodes share one target element (the canvas), and Page preview keeps an open popover
+		// for the same target. Close the previous node's popover so the new node gets its own.
+		this.hoverParent.hoverPopover?.unload();
+		this.hoverParent.hoverPopover = null;
 		this.app.workspace.trigger("hover-link", {
 			event,
 			source: VIEW_TYPE_GRAPH,

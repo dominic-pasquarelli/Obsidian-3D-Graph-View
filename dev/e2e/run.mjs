@@ -117,6 +117,18 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	const undirected = await page.H(() => window.harness.controller.debugState().extraLinks.length);
 	check("ignoring direction finds more partners", undirected > directed, `${directed} -> ${undirected}`);
 
+	// Regression: a text-only vault event while indirect links compute must not discard them.
+	const survived = await page.H(async () => {
+		const c = window.harness.controller;
+		c.debugState().model.extraLinks = [];
+		const pending = c["refreshAugment"](true);
+		window.harness.touch();
+		await pending;
+		await new Promise((r) => setTimeout(r, 300));
+		return c.debugState().extraLinks.length;
+	});
+	check("indirect links survive a text-only vault event mid-computation", survived > 0, `links=${survived}`);
+
 	const forceProfile = page.locator(".g3d-profile").first();
 	await forceProfile.locator("button", { hasText: "Save as…" }).click();
 	await page.waitForTimeout(400);

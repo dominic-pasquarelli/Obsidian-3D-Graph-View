@@ -108,5 +108,9 @@ Object.assign(window, {
 			const changed = vault.mutate();
 			for (const l of changeListeners) l(changed);
 		},
+		/** Simulates an edit that changes note text but no links (e.g. typing in a note). */
+		touch() {
+			for (const l of changeListeners) l([vault.snapshot.files[0].path]);
+		},
 	},
 });
