@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>3D Graph View — harness</title>
+		<link rel="icon" href="data:," />
+		<link rel="stylesheet" href="dist/harness.css" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #1e1e1e;
+				color: #dcddde;
+				font-family: system-ui, sans-serif;
+			}
+			#app {
+				height: calc(100% - 22px);
+			}
+			#log {
+				height: 22px;
+				font: 11px monospace;
+				padding: 3px 8px;
+				color: #8b8f98;
+				box-sizing: border-box;
+				white-space: nowrap;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="app"></div>
+		<div id="log">harness ready</div>
+		<script type="module" src="dist/harness.js"></script>
+	</body>
+</html>
