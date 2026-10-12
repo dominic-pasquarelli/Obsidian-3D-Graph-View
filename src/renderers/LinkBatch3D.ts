@@ -56,9 +56,11 @@ export class LinkBatch3D {
 	updateColors(): void {
 		const colors = this.colors;
 		this.links.forEach((link, i) => {
-			const { hex, alpha } = this.style.linkColorParts(link);
-			const [r, g, b] = this.rgb(hex);
-			colors.set([r, g, b, alpha, r, g, b, alpha], i * 8);
+			// Each end can have its own colour (gradient links); solid links repeat one colour.
+			const { source, target, alpha } = this.style.linkEnds(link);
+			const [r1, g1, b1] = this.rgb(source);
+			const [r2, g2, b2] = this.rgb(target);
+			colors.set([r1, g1, b1, alpha, r2, g2, b2, alpha], i * 8);
 		});
 		const attr = this.geometry.getAttribute("color");
 		if (attr) attr.needsUpdate = true;

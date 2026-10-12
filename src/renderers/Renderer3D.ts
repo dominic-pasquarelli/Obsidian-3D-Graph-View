@@ -1,11 +1,12 @@
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import type { LinkForce } from "d3-force-3d";
-import { Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, Line, LineBasicMaterial, Vector2 } from "three";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { GraphLink, GraphNode } from "../core/graph/types";
 import { LibraryForceEngine, type ForceGraphLike } from "./engine";
 import { LabelLayer3D } from "./LabelLayer3D";
 import { LinkBatch3D } from "./LinkBatch3D";
+import { parseHex } from "../core/util/color";
 import type { StyleResolver } from "./style";
 import { nodeTooltip } from "./tooltip";
 import { stripPrivateKeys, type GraphRenderer, type RendererOptions } from "./types";
@@ -26,6 +27,8 @@ export class Renderer3D implements GraphRenderer {
 	private links: GraphLink[] = [];
 	private size = { width: 1, height: 1 };
 	private releaseGuard: () => void;
+	/** Two-colour lines for gradient links (the library's own lines are single-coloured). */
+	private gradientLines = new Map<GraphLink, Line>();
 
 	constructor(private readonly options: RendererOptions) {
 		this.style = options.style;
@@ -43,6 +46,17 @@ export class Renderer3D implements GraphRenderer {
 			.linkVisibility((l) => this.style.linkVisible(l) && (!this.batch || this.style.isLinkHighlighted(l)))
 			.linkColor((l) => this.style.linkColor(l))
 			.linkWidth((l) => this.linkWidth(l))
+			.linkThreeObject(((l: GraphLink) => (this.style.isGradient(l) ? this.makeGradientLine(l) : null)) as never)
+			.linkPositionUpdate((obj, { start, end }, l) => {
+				const line = this.gradientLines.get(l);
+				if (!line || obj !== line) return false;
+				const pos = line.geometry.getAttribute("position") as BufferAttribute;
+				pos.setXYZ(0, start.x, start.y, start.z);
+				pos.setXYZ(1, end.x, end.y, end.z);
+				pos.needsUpdate = true;
+				line.geometry.computeBoundingSphere();
+				return true;
+			})
 			.linkDirectionalArrowLength((l) => this.style.arrowLength(l))
 			.linkDirectionalArrowRelPos(1)
 			.linkDirectionalArrowColor((l) => this.style.linkColor(l))
@@ -60,9 +74,29 @@ export class Renderer3D implements GraphRenderer {
 			.onBackgroundClick((e) => events.onBackgroundClick(e));
 		this.engine = new LibraryForceEngine(g as unknown as ForceGraphLike, 3);
 		this.releaseGuard = guardSyntheticPointerUp(container.ownerDocument);
-		this.labels = new LabelLayer3D(g.scene(), this.style);
+		this.labels = new LabelLayer3D(g.scene(), () => g.camera(), () => this.size, this.style);
 		g.onEngineTick(() => this.batch?.updatePositions());
 		this.applySettings();
+	}
+
+	private makeGradientLine(link: GraphLink): Line {
+		const geometry = new BufferGeometry();
+		geometry.setAttribute("position", new BufferAttribute(new Float32Array(6), 3));
+		geometry.setAttribute("color", new BufferAttribute(new Float32Array(8), 4));
+		const line = new Line(geometry, new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+		this.gradientLines.set(link, line);
+		this.colorGradientLine(link, line);
+		return line;
+	}
+
+	private colorGradientLine(link: GraphLink, line: Line): void {
+		const ends = this.style.linkEnds(link);
+		const color = line.geometry.getAttribute("color") as BufferAttribute;
+		const a = parseHex(ends.source) ?? { r: 136, g: 136, b: 136 };
+		const b = parseHex(ends.target) ?? a;
+		color.setXYZW(0, a.r / 255, a.g / 255, a.b / 255, ends.alpha);
+		color.setXYZW(1, b.r / 255, b.g / 255, b.b / 255, ends.alpha);
+		color.needsUpdate = true;
 	}
 
 	/** Thin GL lines for big graphs (one draw call is cheaper than a cylinder mesh). */
@@ -87,6 +121,8 @@ export class Renderer3D implements GraphRenderer {
 
 	refreshStyle(): void {
 		const g = this.graph;
+		// Re-setting linkWidth rebuilds link objects, which re-decides which links are gradients.
+		this.gradientLines.clear();
 		g.nodeColor(g.nodeColor())
 			.nodeVal(g.nodeVal())
 			.linkColor(g.linkColor())
@@ -133,6 +169,7 @@ export class Renderer3D implements GraphRenderer {
 		this.size = { width: Math.max(1, width), height: Math.max(1, height) };
 		this.graph.width(this.size.width).height(this.size.height);
 		this.bloom?.setSize(this.size.width, this.size.height);
+		this.labels.sync(); // label size is in screen pixels
 	}
 
 	focusNode(node: GraphNode, durationMs = 900): void {

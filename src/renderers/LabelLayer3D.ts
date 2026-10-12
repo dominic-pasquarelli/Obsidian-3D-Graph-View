@@ -1,32 +1,48 @@
-import { Group, type Scene, type SpriteMaterial } from "three";
+import { Group, PerspectiveCamera, Vector3, type Camera, type Scene, type SpriteMaterial } from "three";
 import SpriteText from "three-spritetext";
 import type { GraphNode } from "../core/graph/types";
+import { declutter, type LabelBox } from "./declutter";
 import type { StyleResolver } from "./style";
 
 interface LabelEntry {
 	node: GraphNode;
 	sprite: SpriteText;
+	shown: boolean;
 }
 
+/** Base label height on screen, in CSS pixels (scaled by the "Label size" setting). */
+const LABEL_PX = 13;
+
 /**
- * Text labels for the 3D view, kept separate from node objects so labels can
- * change (hover, budget, size) without rebuilding every node mesh. Positions
- * follow their nodes on each animation frame; only labelled nodes cost anything.
+ * Text labels for the 3D view. Labels keep a constant size on screen (no giant
+ * text up close, no specks far away), carry a halo in the background colour so
+ * they read over links, and are de-cluttered every frame: where labels would
+ * overlap only the most important one is shown. Kept separate from node meshes
+ * so label changes never rebuild the graph.
  */
 export class LabelLayer3D {
 	private group = new Group();
 	private entries = new Map<string, LabelEntry>();
 	private frame = 0;
-	private frameCount = 0;
 	private disposed = false;
-	private worldHeight = 5;
+	private projected = new Vector3();
 
 	constructor(
 		scene: Scene,
+		private readonly camera: () => Camera,
+		private readonly viewport: () => { width: number; height: number },
 		private readonly style: StyleResolver,
 	) {
 		this.group.name = "3d-graph-view-labels";
 		scene.add(this.group);
+	}
+
+	/** World-to-screen factor for sprites with size attenuation off: screen height = scale / (2·tan(fov/2)) × viewport height. */
+	private textHeight(): number {
+		const cam = this.camera();
+		const fov = cam instanceof PerspectiveCamera ? cam.fov : 40;
+		const px = LABEL_PX * this.style.view.labels.size;
+		return (px * 2 * Math.tan(((fov / 2) * Math.PI) / 180)) / Math.max(1, this.viewport().height);
 	}
 
 	/** Reconciles sprites with the set of nodes the style wants labelled. */
@@ -37,41 +53,35 @@ export class LabelLayer3D {
 		for (const [id, entry] of this.entries) {
 			if (!wantedIds.has(id) || entry.node !== this.style.model?.nodeById.get(id)) this.remove(id);
 		}
-		this.worldHeight = this.measureHeight();
-		const height = this.worldHeight;
+		const height = this.textHeight();
 		const color = this.style.labelColor();
+		const halo = this.style.background();
 		for (const node of wanted) {
 			let entry = this.entries.get(node.id);
 			if (!entry) {
 				const sprite = new SpriteText(this.style.labelText(node), height, color);
 				sprite.fontFace = "Inter, system-ui, sans-serif";
+				sprite.fontWeight = "500";
+				sprite.strokeWidth = 2;
 				sprite.renderOrder = 10;
+				sprite.center.set(0.5, -0.35); // sit just above the node
 				const material = sprite.material as SpriteMaterial;
+				material.sizeAttenuation = false;
 				material.depthWrite = false;
+				material.depthTest = false;
 				material.transparent = true;
-				entry = { node, sprite };
+				entry = { node, sprite, shown: false };
 				this.entries.set(node.id, entry);
 				this.group.add(sprite);
 			}
 			const { sprite } = entry;
 			if (sprite.text !== this.style.labelText(node)) sprite.text = this.style.labelText(node);
-			if (sprite.textHeight !== height) sprite.textHeight = height;
+			if (Math.abs(sprite.textHeight - height) > 1e-6) sprite.textHeight = height;
 			if (sprite.color !== color) sprite.color = color;
-			(sprite.material as SpriteMaterial).opacity = this.style.labelAlpha3D(node);
+			if (sprite.strokeColor !== halo) sprite.strokeColor = halo;
 		}
-		this.updatePositions();
+		this.update();
 		if (this.entries.size > 0 && !this.frame) this.loop();
-	}
-
-	/** Label height in world units, scaled to the graph's spread so labels stay readable at "fit" zoom. */
-	private measureHeight(): number {
-		const nodes = this.style.model?.nodes ?? [];
-		let max = 0;
-		for (const n of nodes) {
-			const d = Math.hypot(n.x ?? 0, n.y ?? 0, n.z ?? 0);
-			if (Number.isFinite(d) && d > max) max = d;
-		}
-		return this.style.view.labels.size * Math.max(4, max * 0.03);
 	}
 
 	private loop = () => {
@@ -79,22 +89,37 @@ export class LabelLayer3D {
 			this.frame = 0;
 			return;
 		}
-		// The layout expands while it settles; rescale labels occasionally.
-		if (++this.frameCount % 45 === 0) {
-			const h = this.measureHeight();
-			if (Math.abs(h - this.worldHeight) / this.worldHeight > 0.15) {
-				this.worldHeight = h;
-				for (const { sprite } of this.entries.values()) sprite.textHeight = h;
-			}
-		}
-		this.updatePositions();
+		this.update();
 		this.frame = requestAnimationFrame(this.loop);
 	};
 
-	private updatePositions(): void {
-		for (const { node, sprite } of this.entries.values()) {
+	/** Follow the nodes, then decide which labels fit on screen. */
+	private update(): void {
+		const camera = this.camera();
+		const { width, height } = this.viewport();
+		const px = LABEL_PX * this.style.view.labels.size;
+		const boxes: LabelBox[] = [];
+		for (const [id, entry] of this.entries) {
+			const { node, sprite } = entry;
 			const r = this.style.nodeRadius(node);
-			sprite.position.set(node.x ?? 0, (node.y ?? 0) + r + sprite.textHeight * 0.75, node.z ?? 0);
+			sprite.position.set(node.x ?? 0, (node.y ?? 0) + r, node.z ?? 0);
+			const p = this.projected.copy(sprite.position).project(camera);
+			if (p.z > 1 || p.z < -1) {
+				sprite.visible = entry.shown = false;
+				continue;
+			}
+			const sx = ((p.x + 1) / 2) * width;
+			const sy = ((1 - p.y) / 2) * height;
+			const w = px * (sprite.scale.x / Math.max(1e-9, sprite.scale.y));
+			// Box covers the text above the anchor; nearer labels and ones already shown win ties.
+			const priority = this.style.labelPriority(node) * (entry.shown ? 1.05 : 1) + (1 - p.z);
+			boxes.push({ id, x: sx, y: sy - px * 0.85, w, h: px, priority });
+		}
+		const keep = declutter(boxes);
+		for (const [id, entry] of this.entries) {
+			const show = keep.has(id);
+			entry.shown = show;
+			entry.sprite.visible = show;
 		}
 	}
 

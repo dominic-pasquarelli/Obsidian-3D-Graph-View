@@ -1,6 +1,6 @@
 import { Menu, normalizePath, Notice, setIcon, TFile, TFolder, type App, type HoverParent } from "obsidian";
 import { VIEW_TYPE_GRAPH } from "../constants";
-import type { GraphHost, NodeMenuAction } from "../controller/ports";
+import type { GraphHost, MenuEntry, NodeMenuAction } from "../controller/ports";
 import type { GraphNode } from "../core/graph/types";
 import type { ProfileKind } from "../core/profiles/ProfileLibrary";
 import { cssColorToHex } from "../core/util/color";
@@ -82,6 +82,23 @@ export class ObsidianHost implements GraphHost {
 			menu.addSeparator();
 			// Let other plugins add their file actions (same as the core graph).
 			this.app.workspace.trigger("file-menu", menu, file, VIEW_TYPE_GRAPH);
+		}
+		menu.showAtMouseEvent(event);
+	}
+
+	showMenu(event: MouseEvent, entries: MenuEntry[]): void {
+		const menu = new Menu();
+		for (const entry of entries) {
+			if (entry === "separator") {
+				menu.addSeparator();
+				continue;
+			}
+			menu.addItem((item) => {
+				item.setTitle(entry.title).onClick(entry.run);
+				if (entry.icon) item.setIcon(entry.icon);
+				if (entry.warning) item.setWarning(true);
+				if (entry.disabled) item.setDisabled(true);
+			});
 		}
 		menu.showAtMouseEvent(event);
 	}

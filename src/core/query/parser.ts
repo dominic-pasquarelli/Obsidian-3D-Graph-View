@@ -217,8 +217,10 @@ class Parser {
 	}
 
 	private property(raw: string, caseSensitive: boolean): QueryNode {
-		const colon = raw.indexOf(":");
-		const name = (colon >= 0 ? raw.slice(0, colon) : raw).trim();
+		// Obsidian writes property searches as [name:value] or ["name":"value"]; the colon
+		// that separates them is the first one outside quotes.
+		const colon = colonOutsideQuotes(raw);
+		const name = unquote((colon >= 0 ? raw.slice(0, colon) : raw).trim());
 		if (colon < 0) return { type: "property", name, value: null };
 		const valueText = raw.slice(colon + 1).trim();
 		if (!valueText) return { type: "property", name, value: null };
@@ -238,6 +240,19 @@ class Parser {
 			return { kind: "text", text: source };
 		}
 	}
+}
+
+function colonOutsideQuotes(text: string): number {
+	let quoted = false;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '"') quoted = !quoted;
+		else if (text[i] === ":" && !quoted) return i;
+	}
+	return -1;
+}
+
+function unquote(text: string): string {
+	return text.length >= 2 && text.startsWith('"') && text.endsWith('"') ? text.slice(1, -1) : text;
 }
 
 /** Within line:/section:/block: scopes, bare words search content, not file names. */

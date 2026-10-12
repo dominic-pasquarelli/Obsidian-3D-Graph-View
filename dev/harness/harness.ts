@@ -1,7 +1,7 @@
 import "../../styles.css";
 import workerSource from "virtual:compute-worker";
 import { GraphController } from "../../src/controller/GraphController";
-import type { GraphDataSource, GraphHost, NodeMenuAction, SettingsStore } from "../../src/controller/ports";
+import type { GraphDataSource, GraphHost, MenuEntry, NodeMenuAction, SettingsStore } from "../../src/controller/ports";
 import type { GraphNode } from "../../src/core/graph/types";
 import { loadPluginData, serializePluginData } from "../../src/core/settings/pluginData";
 import { createMockVault } from "./mockVault";
@@ -45,6 +45,36 @@ const source: GraphDataSource = {
 	readCoreGraphConfig: async () => vault.core,
 };
 
+/** Stand-in for Obsidian's Menu. */
+function showHarnessMenu(event: MouseEvent, entries: (MenuEntry | NodeMenuAction)[]): void {
+	document.querySelector(".harness-menu")?.remove();
+	const menu = document.createElement("div");
+	menu.className = "harness-menu";
+	menu.style.cssText = `position:fixed;left:${Math.min(event.clientX, innerWidth - 220)}px;top:${event.clientY}px;min-width:180px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);border-radius:6px;padding:4px;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,.3);font-size:13px;`;
+	for (const entry of entries) {
+		if (entry === "separator") {
+			menu.append(Object.assign(document.createElement("div"), { style: "height:1px;margin:4px 0;background:var(--background-modifier-border)" }));
+			continue;
+		}
+		const e = entry as Exclude<MenuEntry, "separator">;
+		const item = document.createElement("div");
+		item.textContent = e.title;
+		item.dataset.title = e.title;
+		item.style.cssText = `padding:5px 10px;border-radius:4px;cursor:${e.disabled ? "default" : "pointer"};opacity:${e.disabled ? 0.45 : 1};color:${e.warning ? "var(--text-error)" : "inherit"};`;
+		if (!e.disabled) {
+			item.onmouseenter = () => (item.style.background = "var(--background-modifier-hover)");
+			item.onmouseleave = () => (item.style.background = "");
+			item.onclick = () => {
+				menu.remove();
+				e.run();
+			};
+		}
+		menu.append(item);
+	}
+	document.body.append(menu);
+	setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+}
+
 const savedFiles = new Map<string, string>();
 const host: GraphHost = {
 	theme: () =>
@@ -53,23 +83,12 @@ const host: GraphHost = {
 			: { background: "#1e1e1e", text: "#dadada", textMuted: "#a3a3a3", accent: "#8a5cf5", isDark: true },
 	openNode: (node: GraphNode, newTab: boolean) => record("open", { id: node.id, kind: node.kind, newTab }),
 	showNodeMenu(node: GraphNode, event: MouseEvent, actions: NodeMenuAction[]) {
-		document.querySelector(".harness-menu")?.remove();
-		const menu = document.createElement("div");
-		menu.className = "harness-menu";
-		menu.style.cssText = `position:fixed;left:${event.clientX}px;top:${event.clientY}px;background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:4px;z-index:10;`;
-		for (const a of actions) {
-			const item = document.createElement("div");
-			item.textContent = a.title;
-			item.style.cssText = "padding:4px 10px;cursor:pointer;";
-			item.onclick = () => {
-				menu.remove();
-				a.run();
-			};
-			menu.append(item);
-		}
-		document.body.append(menu);
-		setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+		showHarnessMenu(event, actions);
 		record("menu", { id: node.id, actions: actions.map((a) => a.title) });
+	},
+	showMenu(event: MouseEvent, entries: MenuEntry[]) {
+		showHarnessMenu(event, entries);
+		record("panel-menu", entries.filter((e) => e !== "separator").map((e) => (e as { title: string }).title));
 	},
 	activeNodeId: () => params.get("active") ?? null,
 	notify: (message) => record("notice", message),

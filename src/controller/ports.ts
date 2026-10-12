@@ -30,11 +30,16 @@ export interface NodeMenuAction {
 	run: () => void;
 }
 
+/** An entry in a generic menu (profile actions etc.). */
+export type MenuEntry = { title: string; icon?: string; warning?: boolean; disabled?: boolean; run: () => void } | "separator";
+
 export interface GraphHost {
 	theme(): ResolvedTheme;
 	/** Open a note / attachment / tag search, or create a not-yet-created note. */
 	openNode(node: GraphNode, newTab: boolean): void;
 	showNodeMenu(node: GraphNode, event: MouseEvent, actions: NodeMenuAction[]): void;
+	/** A plain menu at the pointer (used by the settings panel). */
+	showMenu(event: MouseEvent, entries: MenuEntry[]): void;
 	/**
 	 * Page-preview style hover popover (optional). Called on every hover change;
 	 * `node`/`event` are null when nothing is hovered (or the pointer left the graph).

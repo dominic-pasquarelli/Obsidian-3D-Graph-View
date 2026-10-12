@@ -37,8 +37,12 @@ export interface ViewSettings {
 		indirectOpacity: number;
 		particles: ParticleMode;
 		particleSpeed: number;
+		/** Colour a link like the colour group of the note it comes from. */
+		colorByGroup: boolean;
+		/** With colorByGroup: two-way links blend both notes' colours. */
+		gradient: boolean;
 	};
-	labels: { mode: LabelMode; size: number; zoomThreshold: number };
+	labels: { mode: LabelMode; size: number; zoomThreshold: number; hoverNeighbours: number };
 	style: { background: BackgroundMode; customBackground: string; bloom: boolean; bloomStrength: number };
 	interaction: { highlightOnHover: boolean; dimOpacity: number; highlightActive: boolean; pinOnDrag: boolean; controls3d: Controls3D };
 }
@@ -65,8 +69,10 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
 		indirectOpacity: 0.12,
 		particles: "hover",
 		particleSpeed: 0.006,
+		colorByGroup: false,
+		gradient: true,
 	},
-	labels: { mode: "auto", size: 1, zoomThreshold: 1.6 },
+	labels: { mode: "auto", size: 1, zoomThreshold: 1.6, hoverNeighbours: 12 },
 	style: { background: "theme", customBackground: "#0b0d17", bloom: false, bloomStrength: 1.1 },
 	interaction: { highlightOnHover: true, dimOpacity: 0.12, highlightActive: true, pinOnDrag: false, controls3d: "orbit" },
 };
@@ -119,6 +125,14 @@ export const VIEW_SECTIONS: ControlSection<ViewSettings>[] = [
 			{ type: "toggle", key: "links.widthByRefs", label: "Thicker for more references" },
 			{ type: "slider", key: "links.opacity", label: "Link opacity", min: 0.02, max: 1, step: 0.02 },
 			{ type: "toggle", key: "links.arrows", label: "Arrows" },
+			{ type: "toggle", key: "links.colorByGroup", label: "Colour links by note group", desc: "A link takes the colour group of the note it comes from." },
+			{
+				type: "toggle",
+				key: "links.gradient",
+				label: "Blend two-way links",
+				desc: "Links in both directions fade from one note's colour to the other's.",
+				showIf: (s) => s.links.colorByGroup,
+			},
 			{ type: "toggle", key: "links.showIndirect", label: "Show indirect links", desc: "Draw the 2nd/3rd-level gravity links." },
 			{ type: "slider", key: "links.indirectOpacity", label: "Indirect link opacity", min: 0.02, max: 1, step: 0.02, showIf: (s) => s.links.showIndirect },
 			{ type: "dropdown", key: "links.particles", label: "Signal particles", options: { off: "Off", hover: "On hover", all: "Always" } },
@@ -136,6 +150,15 @@ export const VIEW_SECTIONS: ControlSection<ViewSettings>[] = [
 				options: { auto: "Automatic (important + zoom)", always: "Always", hover: "On hover", never: "Never" },
 			},
 			{ type: "slider", key: "labels.size", label: "Label size", min: 0.4, max: 3, step: 0.1 },
+			{
+				type: "slider",
+				key: "labels.hoverNeighbours",
+				label: "Neighbour labels on hover",
+				desc: "How many connected notes are labelled when you hover a note (most connected first).",
+				min: 0,
+				max: 50,
+				step: 1,
+			},
 			{ type: "slider", key: "labels.zoomThreshold", label: "2D: zoom to reveal labels", min: 0.2, max: 6, step: 0.1, showIf: (s) => s.mode === "2d" },
 		],
 	},

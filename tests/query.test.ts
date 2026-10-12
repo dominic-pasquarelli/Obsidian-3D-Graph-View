@@ -61,6 +61,17 @@ describe("query language", () => {
 		expect(q("[missing]")).toBe(false);
 	});
 
+	it("supports Obsidian's quoted property syntax", () => {
+		const person: NoteFacts = { path: "People/Ada.md", fileName: "Ada.md", tags: [], frontmatter: { type: "People", Classification: "[[Meeting]]", "due date": "2026-01-02" } };
+		expect(q('["type":"People"]', person)).toBe(true);
+		expect(q('["type":"Places"]', person)).toBe(false);
+		expect(q('["Classification":"Meeting"]', person)).toBe(true);
+		expect(q('["classification"]', person)).toBe(true);
+		expect(q('["due date":"2026-01-02"]', person)).toBe(true);
+		expect(q('[type:"People"]', person)).toBe(true);
+		expect(q('["type":People OR Places]', person)).toBe(true);
+	});
+
 	it("supports regex and case operators", () => {
 		expect(q("path:/^Projects\\//")).toBe(true);
 		expect(q("/repet+ition/")).toBe(true);

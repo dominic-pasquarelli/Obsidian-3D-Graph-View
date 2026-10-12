@@ -30,6 +30,8 @@ export class StyleResolver {
 	private highlightNodes = new Set<string>();
 	private highlightLinks = new Set<string>();
 	private labelSet = new Set<string>();
+	/** While hovering: the hovered note plus its most connected neighbours (capped). */
+	private hoverLabels = new Set<string>();
 	private labelsDirty = true;
 	/** 2 or 3 — 3D shows fewer, larger persistent labels because perspective already crowds them. */
 	dims: 2 | 3 = 3;
@@ -76,6 +78,7 @@ export class StyleResolver {
 	private recomputeHighlight(): void {
 		this.highlightNodes.clear();
 		this.highlightLinks.clear();
+		this.hoverLabels.clear();
 		const id = this.hoverId;
 		if (!id || !this.model || !this.view) return;
 		this.highlightNodes.add(id);
@@ -91,6 +94,15 @@ export class StyleResolver {
 		};
 		consider(this.model.links);
 		consider(this.model.extraLinks);
+		// A hub can have hundreds of neighbours; label only the most connected few.
+		this.hoverLabels.add(id);
+		const cap = this.view.labels.hoverNeighbours;
+		const neighbours = Array.from(this.highlightNodes)
+			.filter((n) => n !== id)
+			.map((n) => this.model!.nodeById.get(n))
+			.filter((n): n is GraphNode => !!n)
+			.sort((a, b) => importance(b) - importance(a));
+		for (const n of neighbours.slice(0, cap)) this.hoverLabels.add(n.id);
 	}
 
 	private get dimming(): boolean {
@@ -156,13 +168,48 @@ export class StyleResolver {
 		return this.highlightLinks.has(link.id);
 	}
 
-	/** Link colour as hex + alpha (used directly by batched renderers). */
-	linkColorParts(link: GraphLink): { hex: string; alpha: number } {
+	private linkAlpha(link: GraphLink): number {
 		const l = this.view.links;
-		if (this.highlightLinks.has(link.id)) return { hex: this.theme.accent, alpha: Math.min(1, Math.max(0.6, l.opacity * 2)) };
+		if (this.highlightLinks.has(link.id)) return Math.min(1, Math.max(0.6, l.opacity * 2));
 		let alpha = (link.kind === "indirect" ? l.indirectOpacity : l.opacity) * this.plan.linkOpacityScale;
 		if (this.dimming) alpha *= this.view.interaction.dimOpacity;
-		return { hex: link.kind === "indirect" ? this.theme.accent : this.theme.textMuted, alpha };
+		return alpha;
+	}
+
+	private groupColor(end: string | GraphNode): string | null {
+		const node = typeof end === "string" ? this.model?.nodeById.get(end) : end;
+		return node && node.group >= 0 && node.color ? node.color : null;
+	}
+
+	/**
+	 * Colour at each end of a link (identical for a solid link). With "colour links by
+	 * note group", a link takes the group colour of the note it comes from; a two-way
+	 * link can blend both notes' colours.
+	 */
+	linkEnds(link: GraphLink): { source: string; target: string; alpha: number } {
+		const alpha = this.linkAlpha(link);
+		const highlighted = this.highlightLinks.has(link.id);
+		const base = link.kind === "indirect" || highlighted ? this.theme.accent : this.theme.textMuted;
+		if (!this.view.links.colorByGroup || link.kind === "indirect") return { source: base, target: base, alpha };
+		const sc = this.groupColor(link.source);
+		const tc = this.groupColor(link.target);
+		const out = link.forward > 0;
+		const back = link.backward > 0;
+		if (out && back && this.view.links.gradient && (sc || tc)) return { source: sc ?? base, target: tc ?? base, alpha };
+		const solid = (out ? sc : tc) ?? (out && back ? tc : null) ?? base;
+		return { source: solid, target: solid, alpha };
+	}
+
+	/** True when the two ends of a link are drawn in different colours. */
+	isGradient(link: GraphLink): boolean {
+		const e = this.linkEnds(link);
+		return e.source !== e.target;
+	}
+
+	/** Solid link colour as hex + alpha (a gradient link reports its source colour). */
+	linkColorParts(link: GraphLink): { hex: string; alpha: number } {
+		const e = this.linkEnds(link);
+		return { hex: e.source, alpha: e.alpha };
 	}
 
 	linkColor(link: GraphLink): string {
@@ -208,44 +255,42 @@ export class StyleResolver {
 		const mode = this.view.labels.mode;
 		if (mode === "never" || mode === "hover") return;
 		const nodes = this.model.nodes;
-		const budget = mode === "always" ? (this.dims === 3 ? 1500 : Infinity) : this.dims === 3 ? Math.min(40, Math.ceil(this.plan.labelBudget / 8)) : this.plan.labelBudget;
+		// Overlapping labels are dropped at draw time, so these are upper bounds.
+		const budget = mode === "always" ? (this.dims === 3 ? 1500 : Infinity) : this.dims === 3 ? Math.min(60, Math.ceil(this.plan.labelBudget / 5)) : this.plan.labelBudget;
 		if (nodes.length <= budget) {
 			for (const n of nodes) this.labelSet.add(n.id);
 			return;
 		}
-		const ranked = nodes.slice().sort((a, b) => b.degree + b.inRefs - (a.degree + a.inRefs));
+		const ranked = nodes.slice().sort((a, b) => importance(b) - importance(a));
 		for (let i = 0; i < budget && i < ranked.length; i++) this.labelSet.add(ranked[i].id);
 	}
 
-	/** Persistent (always drawn) labels, before any zoom-based reveal. */
-	hasPersistentLabel(node: GraphNode): boolean {
-		if (this.view.labels.mode === "never") return false;
-		this.ensureLabels();
-		return this.labelSet.has(node.id) || this.highlightNodes.has(node.id) || this.isActive(node);
+	/** While hovering a note (with highlighting on, or in "labels on hover" mode) only its labels show. */
+	private get hoverLabelling(): boolean {
+		return this.hoverId !== null && (this.view.interaction.highlightOnHover || this.view.labels.mode === "hover");
 	}
 
-	/** Label opacity for a 2D zoom level (globalScale); 0 = hidden. */
+	/** Higher wins when labels would overlap. */
+	labelPriority(node: GraphNode): number {
+		if (node.id === this.hoverId) return 1e9;
+		if (this.isActive(node)) return 1e8;
+		if (this.hoverLabels.has(node.id)) return 1e6 + importance(node);
+		return importance(node);
+	}
+
+	/** Label opacity for a 2D zoom level (globalScale); 0 = hidden. Overlaps are removed afterwards. */
 	labelAlpha2D(node: GraphNode, zoom: number): number {
 		const mode = this.view.labels.mode;
 		if (mode === "never") return 0;
-		const emphasised = this.highlightNodes.has(node.id) || this.isActive(node);
-		let alpha: number;
-		if (emphasised || mode === "always") alpha = 1;
-		else if (mode === "hover") alpha = 0;
-		else {
-			this.ensureLabels();
-			const t = this.view.labels.zoomThreshold;
-			const important = this.labelSet.has(node.id) && this.labelSet.size < (this.model?.nodes.length ?? 0);
-			const threshold = important ? t * 0.5 : t;
-			alpha = Math.max(0, Math.min(1, (zoom - threshold * 0.75) / (threshold * 0.25)));
-		}
-		if (this.dimming && !emphasised) alpha *= this.view.interaction.dimOpacity;
-		return alpha;
-	}
-
-	labelAlpha3D(node: GraphNode): number {
-		const emphasised = this.highlightNodes.has(node.id) || this.isActive(node);
-		return this.dimming && !emphasised ? Math.max(0.05, this.view.interaction.dimOpacity) : 1;
+		if (this.isActive(node)) return 1;
+		if (this.hoverLabelling) return this.hoverLabels.has(node.id) ? 1 : 0;
+		if (mode === "always") return 1;
+		if (mode === "hover") return 0;
+		this.ensureLabels();
+		const t = this.view.labels.zoomThreshold;
+		const important = this.labelSet.has(node.id) && this.labelSet.size < (this.model?.nodes.length ?? 0);
+		const threshold = important ? t * 0.5 : t;
+		return Math.max(0, Math.min(1, (zoom - threshold * 0.75) / (threshold * 0.25)));
 	}
 
 	labelText(node: GraphNode): string {
@@ -256,12 +301,29 @@ export class StyleResolver {
 		return this.view.style.background === "space" ? "#e6e8f0" : this.theme.text;
 	}
 
-	/** Every node that currently wants a 3D label sprite. */
+	/** Every node that currently wants a 3D label (overlaps are removed by the label layer). */
 	labelledNodes(): GraphNode[] {
 		if (!this.model || this.view.labels.mode === "never") return [];
-		this.ensureLabels();
 		const out: GraphNode[] = [];
-		for (const node of this.model.nodes) if (this.hasPersistentLabel(node)) out.push(node);
+		if (this.hoverLabelling) {
+			for (const id of this.hoverLabels) {
+				const node = this.model.nodeById.get(id);
+				if (node) out.push(node);
+			}
+		} else if (this.view.labels.mode !== "hover") {
+			this.ensureLabels();
+			for (const id of this.labelSet) {
+				const node = this.model.nodeById.get(id);
+				if (node) out.push(node);
+			}
+		}
+		const active = this.activeId ? this.model.nodeById.get(this.activeId) : undefined;
+		if (active && this.isActive(active) && !out.includes(active)) out.push(active);
 		return out;
 	}
+}
+
+/** How prominent a note is: its connections plus how often it is referenced. */
+export function importance(node: GraphNode): number {
+	return node.degree + node.inRefs;
 }
