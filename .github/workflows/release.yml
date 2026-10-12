@@ -39,12 +39,21 @@ jobs:
             echo "::error::Tag $TAG does not match manifest.json version $VERSION"
             exit 1
           fi
-      - name: Create the release or attach files to it
+      - name: Create the release or attach missing files to it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # A version's files never change, so only upload what is missing: replacing files that
+        # are already there would briefly break downloads (e.g. a BRAT update check).
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+            existing=$(gh release view "$TAG" --json assets -q '.assets[].name')
+            for f in main.js manifest.json styles.css; do
+              if printf '%s\n' "$existing" | grep -qx "$f"; then
+                echo "$f is already attached"
+              else
+                gh release upload "$TAG" "$f"
+              fi
+            done
           else
             gh release create "$TAG" --title "$TAG" --generate-notes main.js manifest.json styles.css
           fi
