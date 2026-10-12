@@ -114,4 +114,20 @@ describe("GraphPipeline (integration)", () => {
 		await Promise.all([pipeline.applyColors(model, groups, true), pipeline.applyColors(model, groups, true)]);
 		expect(reads.filter((p) => p === "B.md")).toHaveLength(1);
 	});
+
+	it("ignores cached note text once content search is turned off", async () => {
+		const pipeline = new GraphPipeline(source({ "B.md": "talks about recall" }), new AdaptiveExecutor(null));
+		const view = clone(DEFAULT_VIEW_SETTINGS);
+		const model = await pipeline.buildModel(view, true);
+		const groups = [{ query: "content:recall", color: "#00ff00", enabled: true }];
+		await pipeline.applyColors(model, groups, true);
+		expect(model.nodeById.get("B.md")!.color).toBe("#00ff00");
+		// Same pipeline (text is cached), content search now off.
+		await pipeline.applyColors(model, groups, false);
+		expect(model.nodeById.get("B.md")!.color).toBeUndefined();
+		view.filters.search = "content:recall";
+		const filtered = await pipeline.buildModel(view, false, model);
+		expect(filtered.nodes.filter((n) => n.kind === "note")).toHaveLength(0);
+	});
 });
+

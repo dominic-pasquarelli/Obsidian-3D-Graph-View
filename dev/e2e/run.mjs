@@ -59,6 +59,14 @@ const node = (page, id) => page.H((id) => { const n = window.harness.controller.
 const spread = (page) => page.H(() => { const xs = window.harness.controller.debugState().model.nodes.map((n) => n.x); return Math.max(...xs) - Math.min(...xs); });
 const physicsOn = async (page) => (await page.H(() => window.harness.controller.statusLines())).find((l) => l.startsWith("Physics runs on"));
 const toggle = (page, section, key) => page.locator(`[data-section="${section}"] input[data-key="${key}"]`).locator("..").click();
+/** Pin a node where it is, so hover/click targets can't drift while the layout settles. */
+const pin = (page, id) =>
+	page.H((id) => {
+		const n = window.harness.controller.debugState().model.nodeById.get(id);
+		n.fx = n.x;
+		n.fy = n.y;
+		if (window.harness.controller.debugState().view.mode === "3d") n.fz = n.z;
+	}, id);
 
 // ---------------------------------------------------------------- 1. modes and profiles render
 {
@@ -67,6 +75,17 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	const s = await page.H(() => window.harness.controller.debugState());
 	check("3D view builds the model", s.model.nodes.length > 400 && s.model.stats.unresolved > 0);
 	await shot(page, "01-3d");
+	// Leaving the graph clears the hover highlight (the 3D renderer keeps hit-testing at the last pointer position).
+	await pin(page, "Index.md");
+	await page.waitForTimeout(300);
+	const hubPos = await nodeAt(page, "Index.md");
+	await page.mouse.move(hubPos.x, hubPos.y);
+	await page.waitForTimeout(400);
+	const hoveredBefore = await page.H(() => window.harness.controller["style"].hovered);
+	await page.mouse.move(600, 15); // onto the toolbar
+	await page.waitForTimeout(600);
+	const hoveredAfter = await page.H(() => window.harness.controller["style"].hovered);
+	check("moving the pointer off the 3D graph clears the hover", hoveredBefore === "Index.md" && hoveredAfter === null, `${hoveredBefore} -> ${hoveredAfter}`);
 	await page.locator(".g3d-toolbar-profile select").nth(0).selectOption({ label: "Neural (indirect gravity)" });
 	await page.locator(".g3d-toolbar-profile select").nth(1).selectOption({ label: "Neural glow" });
 	await page.waitForTimeout(3000);
@@ -88,6 +107,8 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	const page = await open("n=150&mode=2d");
 	await page.waitForTimeout(4000);
 	const hub = "Index.md";
+	await pin(page, hub);
+	await page.waitForTimeout(300);
 	let pos = await nodeAt(page, hub);
 	await page.mouse.move(pos.x, pos.y);
 	await page.waitForTimeout(300);
@@ -105,6 +126,8 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 	await page.mouse.click(5, 300);
 	await page.waitForTimeout(250);
 	const ghost = await page.H(() => window.harness.controller.debugState().model.nodes.find((n) => n.kind === "unresolved").id);
+	await pin(page, ghost);
+	await page.waitForTimeout(300);
 	pos = await nodeAt(page, ghost);
 	await page.mouse.click(pos.x, pos.y);
 	await page.waitForTimeout(250);
@@ -186,6 +209,26 @@ const toggle = (page, section, key) => page.locator(`[data-section="${section}"]
 		return { before, after: c.debugState().model.nodes.filter((n) => n.color === "#ff0000").length };
 	});
 	check("a colour-group edit during a rebuild is not overwritten", stale.before > 0 && stale.after === 0, JSON.stringify(stale));
+
+	await page.close();
+}
+
+// ---------------------------------------------------------------- 2b. first build: colour edits made while it reads note content win
+{
+	const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+	page.on("pageerror", (e) => errors.push(`first-build: ${e.stack ?? e.message}`));
+	await page.goto(`${BASE}?reset=1&n=150&mode=2d&holdContent=1&coreContent=1`);
+	await page.waitForFunction(() => window.harness?.controller);
+	await page.waitForTimeout(500); // the first build is now waiting inside its content read
+	const coloured = await page.evaluate(async () => {
+		const c = window.harness.controller;
+		c.onViewChange({ key: "colors.useCoreGroups", value: false, final: true }); // own groups: none
+		window.harness.releaseContent();
+		await c.whenModelReady();
+		await new Promise((r) => setTimeout(r, 500));
+		return c.debugState().model.nodes.filter((n) => n.color).length;
+	});
+	check("a colour edit during the first build wins", coloured === 0, `coloured nodes=${coloured}`);
 	await page.close();
 }
 

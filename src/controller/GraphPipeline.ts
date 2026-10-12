@@ -66,19 +66,20 @@ export class GraphPipeline {
 		}
 	}
 
-	private fileFacts(file: SnapshotFile): NoteFacts {
+	/** `withContent` false hides cached note text, so "content search off" really means off. */
+	private fileFacts(file: SnapshotFile, withContent: boolean): NoteFacts {
 		return {
 			path: file.path,
 			fileName: `${file.basename}.${file.extension}`,
 			tags: file.tags.map((t) => t.replace(/^#/, "").toLowerCase()),
 			frontmatter: file.frontmatter,
-			content: this.content.get(file.path) ?? undefined,
+			content: withContent ? (this.content.get(file.path) ?? undefined) : undefined,
 		};
 	}
 
-	nodeFacts(node: GraphNode): NoteFacts {
+	nodeFacts(node: GraphNode, withContent: boolean): NoteFacts {
 		const file = node.path ? this.files.get(node.path) : undefined;
-		if (file) return this.fileFacts(file);
+		if (file) return this.fileFacts(file, withContent);
 		if (node.kind === "tag") return { path: node.name, fileName: node.name, tags: [node.name.slice(1)] };
 		const text = node.linkText ?? node.name;
 		return { path: text, fileName: text, tags: [] };
@@ -95,7 +96,7 @@ export class GraphPipeline {
 				if (contentQueries) await this.loadContent(snapshot.files.filter((f) => f.extension === "md").map((f) => f.path));
 				else this.filterWarnings.push("Content search is off in settings, so plain words only match file names.");
 			}
-			includeFile = (file) => evaluate(parsed.root, this.fileFacts(file));
+			includeFile = (file) => evaluate(parsed.root, this.fileFacts(file, contentQueries));
 		}
 		return buildGraph(snapshot, { filters: view.filters, includeFile, previous: previous?.nodeById });
 	}
@@ -113,7 +114,7 @@ export class GraphPipeline {
 		}
 		if (!isCurrent()) return false;
 		for (const node of model.nodes) {
-			const hit = compiled.length ? matchGroup(compiled, this.nodeFacts(node)) : null;
+			const hit = compiled.length ? matchGroup(compiled, this.nodeFacts(node, contentQueries)) : null;
 			node.group = hit ? hit.index : -1;
 			node.color = hit ? hit.group.color : undefined;
 		}

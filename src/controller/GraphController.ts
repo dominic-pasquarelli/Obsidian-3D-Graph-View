@@ -69,6 +69,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 	private stateListeners = new Set<() => void>();
 	private warningKey = "";
 	private fingerprint = "";
+	private lastContentQueries: boolean;
 	private colorGen = 0;
 	private physics: WorkerPhysics | null = null;
 	private physicsBroken = false;
@@ -87,6 +88,7 @@ export class GraphController implements PanelContext, ToolbarContext {
 		if (initial.mode) this.viewSettings.mode = initial.mode;
 		this.open = initial.panelOpen ?? false;
 		this.plan = planPerformance(0, 0, data.performance);
+		this.lastContentQueries = data.contentQueries;
 		this.executor = new AdaptiveExecutor(deps.workerSource);
 		this.pipeline = new GraphPipeline(deps.source, this.executor);
 
@@ -116,12 +118,20 @@ export class GraphController implements PanelContext, ToolbarContext {
 		resize.observe(this.canvasEl);
 		this.disposers.push(() => resize.disconnect());
 		const onPointer = (e: PointerEvent) => (this.lastPointer = e);
+		// The renderers keep hit-testing at the last pointer position after it leaves the canvas,
+		// so nodes drifting under that point would still "hover". Forget the pointer on leave.
+		const onLeave = () => {
+			this.lastPointer = null;
+			this.onNodeHover(null);
+		};
 		const onInteract = () => (this.interacted = true);
 		this.canvasEl.addEventListener("pointermove", onPointer);
+		this.canvasEl.addEventListener("pointerleave", onLeave);
 		this.canvasEl.addEventListener("pointerdown", onInteract);
 		this.canvasEl.addEventListener("wheel", onInteract, { passive: true });
 		this.disposers.push(() => {
 			this.canvasEl.removeEventListener("pointermove", onPointer);
+			this.canvasEl.removeEventListener("pointerleave", onLeave);
 			this.canvasEl.removeEventListener("pointerdown", onInteract);
 			this.canvasEl.removeEventListener("wheel", onInteract);
 		});
@@ -212,6 +222,8 @@ export class GraphController implements PanelContext, ToolbarContext {
 			this.style.setActive(this.deps.host.activeNodeId());
 			this.pushData();
 			this.resolveModelReady();
+			// The graph is built and shown; indirect-link work has its own busy reason.
+			this.setBusy("data", null);
 			this.scheduleFit();
 			// Colour groups were edited while this build was colouring: recolour with the latest groups.
 			if (colorGen !== this.colorGen) void this.refreshColors();
@@ -270,9 +282,11 @@ export class GraphController implements PanelContext, ToolbarContext {
 	}
 
 	private async refreshColors(): Promise<void> {
+		// Bump first: an edit made while the very first build is still colouring must win over it
+		// (that build then skips its stale apply and recolours once committed).
+		const gen = ++this.colorGen;
 		const model = this.model;
 		if (!model) return;
-		const gen = ++this.colorGen;
 		// Only the newest request may write colours (an older, slower one would paint stale groups).
 		const applied = await this.pipeline.applyColors(model, this.colorGroups(), this.contentQueries, () => gen === this.colorGen && model === this.model && !this.disposed);
 		if (!applied) return;
@@ -449,10 +463,10 @@ export class GraphController implements PanelContext, ToolbarContext {
 	}
 
 	private onNodeHover(node: GraphNode | null): void {
-		if (this.style.setHover(node?.id ?? null)) this.renderer?.refreshStyle();
-		if (node && this.lastPointer && this.deps.host.hoverPreview && node.kind !== "unresolved") {
-			this.deps.host.hoverPreview(node, this.lastPointer, this.canvasEl);
-		}
+		// Ignore "hovers" produced by nodes drifting under a pointer that is no longer over the graph.
+		const hovered = this.lastPointer ? node : null;
+		if (this.style.setHover(hovered?.id ?? null)) this.renderer?.refreshStyle();
+		this.deps.host.hoverPreview?.(hovered, hovered ? this.lastPointer : null);
 	}
 
 	private onNodeDragEnd(node: GraphNode): void {
@@ -718,6 +732,11 @@ export class GraphController implements PanelContext, ToolbarContext {
 	/** Another view or the settings tab changed shared state. */
 	private onStoreChange(): void {
 		const data = this.deps.store.data;
+		if (data.contentQueries !== this.lastContentQueries) {
+			// Filters and colour groups may match differently with content search on/off.
+			this.lastContentQueries = data.contentQueries;
+			void this.refreshData(true);
+		}
 		if (!data.forces.get(this.forceProfileId)) void this.selectProfile("force", data.forces.list()[0].id, true);
 		if (!data.views.get(this.viewProfileId)) void this.selectProfile("view", data.views.list()[0].id, true);
 		const plan = planPerformance(this.model?.nodes.length ?? 0, this.model?.links.length ?? 0, data.performance);

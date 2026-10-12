@@ -35,8 +35,11 @@ export interface GraphHost {
 	/** Open a note / attachment / tag search, or create a not-yet-created note. */
 	openNode(node: GraphNode, newTab: boolean): void;
 	showNodeMenu(node: GraphNode, event: MouseEvent, actions: NodeMenuAction[]): void;
-	/** Page-preview style hover popover (optional). */
-	hoverPreview?(node: GraphNode, event: MouseEvent, target: HTMLElement): void;
+	/**
+	 * Page-preview style hover popover (optional). Called on every hover change;
+	 * `node`/`event` are null when nothing is hovered (or the pointer left the graph).
+	 */
+	hoverPreview?(node: GraphNode | null, event: MouseEvent | null): void;
 	activeNodeId(): string | null;
 	notify(message: string): void;
 	prompt(title: string, initial: string): Promise<string | null>;

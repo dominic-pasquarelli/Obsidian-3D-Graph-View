@@ -8,7 +8,7 @@ import { createMockVault } from "./mockVault";
 
 /**
  * Dev harness: runs the real GraphController against a synthetic vault in a
- * plain browser page. Query params: ?n=<notes>&mode=2d|3d&theme=light|dark&worker=always|never|auto&physics=auto|main|worker&reset=1&panel=0
+ * plain browser page. Query params: ?n=<notes>&mode=2d|3d&theme=light|dark&worker=always|never|auto&physics=auto|main|worker&reset=1&panel=0&holdContent=1&coreContent=1
  */
 const params = new URLSearchParams(location.search);
 const noteCount = Number(params.get("n") ?? 400);
@@ -25,6 +25,12 @@ const record = (type: string, detail: unknown) => {
 	if (el) el.textContent = `${type}: ${JSON.stringify(detail)}`;
 };
 
+// ?holdContent=1 makes note-content reads wait for harness.releaseContent() (to test races).
+let releaseContent: () => void = () => {};
+const contentGate = params.get("holdContent") === "1" ? new Promise<void>((resolve) => (releaseContent = resolve)) : Promise.resolve();
+// ?coreContent=1 adds a core-graph colour group that needs note content.
+if (params.get("coreContent") === "1") vault.core.colorGroups.unshift({ query: "content:spaced", color: "#ff0000", enabled: true });
+
 const changeListeners = new Set<(paths: string[] | null) => void>();
 const source: GraphDataSource = {
 	snapshot: () => vault.snapshot,
@@ -32,7 +38,10 @@ const source: GraphDataSource = {
 		changeListeners.add(cb);
 		return () => changeListeners.delete(cb);
 	},
-	readContent: async (path) => vault.content.get(path) ?? null,
+	readContent: async (path) => {
+		await contentGate;
+		return vault.content.get(path) ?? null;
+	},
 	readCoreGraphConfig: async () => vault.core,
 };
 
@@ -113,6 +122,7 @@ Object.assign(window, {
 			const changed = vault.mutate();
 			for (const l of changeListeners) l(changed);
 		},
+		releaseContent: () => releaseContent(),
 		/** Simulates an edit that changes note text but no links (e.g. typing in a note). */
 		touch() {
 			for (const l of changeListeners) l([vault.snapshot.files[0].path]);
