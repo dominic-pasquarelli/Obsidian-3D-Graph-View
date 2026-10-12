@@ -1,17 +1,28 @@
 name: Release
 
-# Push a tag that matches manifest.json's version (e.g. `git tag 0.1.0 && git push --tags`)
-# to publish main.js, manifest.json and styles.css as a GitHub release.
+# Publish a release on GitHub (Releases → Draft a new release, with a new tag that matches
+# manifest.json's version, e.g. 0.1.0) — or push such a tag. This workflow then builds the
+# plugin and attaches main.js, manifest.json and styles.css: the files Obsidian, manual
+# installs and BRAT need.
 on:
   push:
     tags: ["*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
+# Publishing in the UI can fire both triggers; run them one after the other.
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,7 +32,19 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - name: Create release
+      - name: Check the tag matches manifest.json
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match manifest.json version $VERSION"
+            exit 1
+          fi
+      - name: Create the release or attach files to it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes main.js manifest.json styles.css
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes main.js manifest.json styles.css
+          fi

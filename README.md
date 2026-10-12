@@ -32,13 +32,29 @@ It's built for neural-map style exploration and recall.
 
 Built-ins can be edited or deleted. *Settings → Restore built-in profiles* brings them back.
 
-## Installing (manual)
+## Installing
 
-1. `npm install && npm run build`
-2. Copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/3d-graph-view/`.
+Desktop only. Turn on community plugins first (*Settings → Community plugins*).
+
+### With BRAT (recommended while the plugin is in beta — updates automatically)
+
+1. In *Settings → Community plugins → Browse*, install and enable **BRAT**.
+2. Run the command **BRAT: Add a beta plugin for testing** and enter `dominic-pasquarelli/Obsidian-3D-Graph-View`.
 3. Enable **3D Graph View** in *Settings → Community plugins*.
 
-Desktop only.
+BRAT installs the latest [release](https://github.com/dominic-pasquarelli/Obsidian-3D-Graph-View/releases) and picks up new ones on startup.
+
+### Manually
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the latest release (or build them: `npm install && npm run build`).
+2. Put them in `<vault>/.obsidian/plugins/3d-graph-view/`. *Settings → Community plugins* has a folder button that opens `.obsidian/plugins` for you.
+3. Click the reload button next to *Installed plugins*, then enable **3D Graph View**.
+
+### Publishing a release (maintainers)
+
+`npm version <x.y.z>` updates `package.json`, `manifest.json` and `versions.json`. Push to `main`,
+then on GitHub publish a release whose new tag is exactly that version (no `v`). The
+**Release** workflow builds, tests and attaches the three files.
 
 ## Development
 
