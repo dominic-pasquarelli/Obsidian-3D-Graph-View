@@ -19,7 +19,7 @@ src/
     perf/               dynamic scaling plan (tiers, LOD, worker choice)
   renderers/            GraphRenderer interface, shared StyleResolver,
                         3d-force-graph + force-graph adapters, 3D label layer,
-                        batched 3D link layer
+                        batched 3D link layer, label de-cluttering
   controller/           GraphPipeline (data stages), ForceCoordinator,
                         WorkerPhysics, GraphController (orchestration), ports
   ui/                   plain-DOM toolbar, side panel, schema-driven controls
@@ -51,7 +51,14 @@ GraphPipeline.augment()              async, maybe in a worker → indirect links
 
 `StyleResolver` is the single source of truth for colours, sizes, widths,
 labels and highlight state. Both renderers read from it, which is why 2D and
-3D look and behave the same.
+3D look and behave the same. Label overlap is resolved per frame by
+`declutter()` (screen-space boxes, highest `labelPriority` wins), so both views
+share one rule for which labels survive.
+
+The side panel's tabs and settings search are generated from the same control
+specs as the sections, so a new force module or view setting is searchable
+without extra code. Panel menus go through the `GraphHost.showMenu` port
+(Obsidian's `Menu` in the plugin, a DOM stand-in in the harness).
 
 ## Extending
 

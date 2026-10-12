@@ -12,16 +12,18 @@ It's built for neural-map style exploration and recall.
 | **Reference-weighted pull** | Writing `[[B]]` five times in note A makes A↔B a stronger, shorter spring than a single mention. Choose linear / square-root / logarithmic scaling, its influence on pull and distance, and how two-way links combine. |
 | **Notes that don't exist yet** | Unresolved links show as hollow "ghost" nodes. Click one to create the note (optional). The new note keeps the ghost's position. |
 | **Second & third-level gravity** | If A→B→D and A→C→D, D shows up twice as a 2nd-level link of A. Pairs reached through enough 2- or 3-step paths pull towards each other. You can follow link direction or ignore it, which also catches notes that link to the same things. Each level has its own threshold and strength, plus a hub cap and a per-note partner limit. |
-| **Import colour groups** | Use the core graph's colour groups live, or copy them into a profile and edit them. Its filters and forces can be imported too. Queries support `tag:`, `path:`, `file:`, `content:`, `line:`, `section:`, `[property:value]`, words, `"phrases"`, `/regex/`, `OR`, `-negation` and `( )`. |
+| **Import colour groups** | Use the core graph's colour groups live, or copy them into a profile and edit them. Its filters and forces can be imported too. Queries support `tag:`, `path:`, `file:`, `content:`, `line:`, `section:`, `[property:value]` (including Obsidian's quoted form `["type":"People"]`), words, `"phrases"`, `/regex/`, `OR`, `-negation` and `( )`. |
 | **Colour-group gravity** | Notes in the same colour group attract each other, so your classification forms visible regions. |
-| **Force & view profiles** | Two independent profile libraries: *force* (physics) and *view* (filters, colours, display). Mix and match them, save, save as, rename, revert, delete, and export/import as JSON files in your vault. |
+| **Group-coloured links** | Optional: a link takes the colour of the note it comes from. Two-way links between differently coloured notes fade from one colour to the other. *Display › Links › Colour links by note group*. |
+| **Readable labels** | Labels never overlap: when two would collide, the more connected note wins. Labels have a halo for contrast and a fixed on-screen size in 3D. Hovering a hub labels only its most connected neighbours (adjustable). |
+| **Force & view profiles** | Two independent profile libraries: *force* (physics) and *view* (filters, colours, display). Mix and match them. The panel header shows both with a *Save* button; the *⋯* menu has save as new, duplicate, rename, revert, export/import (JSON files in your vault) and delete. |
 | **Recall-friendly interaction** | Hover to highlight a note's neighbourhood and dim everything else. Ctrl/Cmd-hover shows a page preview. The active note is highlighted. You can search and fly to a note, pin nodes, and use the right-click menu (including other plugins' file actions). |
 | **Scales dynamically** | Detail level (labels, geometry, particles, glow, arrows, link opacity) adapts to graph size. On large graphs the **whole force simulation runs in a background worker** (same force modules), so panning and rotating stay smooth while the layout settles. Indirect-link maths moves to the worker too, and 3D links are drawn in one batch. Edits that don't change links don't disturb the layout. |
 
 ## Using it
 
 - **Ribbon icon** or the command palette: *Open 3D graph*, *Open 2D graph*, *Switch between 2D and 3D*, *Show active note in graph*.
-- The **sliders icon** in the view's toolbar opens the settings panel: profiles, every force module, display sections and colour groups.
+- The **sliders icon** in the view's toolbar opens the settings panel. Profiles sit at the top; below are tabs (*Filters*, *Forces*, *Display*, *Colours*, *Info*) and a **Search settings…** box that finds any setting across all tabs. *Info* lists the mouse and keyboard controls.
 - **Click** a node to open it (Ctrl/Cmd-click opens it in a new tab). **Right-click** for more actions.
 - Global options (default profiles, profile folder, performance, content search) are in *Settings → 3D Graph View*.
 

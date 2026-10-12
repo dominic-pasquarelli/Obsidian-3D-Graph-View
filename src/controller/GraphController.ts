@@ -20,7 +20,7 @@ import { Toolbar, type ToolbarContext } from "../ui/Toolbar";
 import { applyForces, detachForces } from "./ForceCoordinator";
 import { WorkerPhysics } from "./WorkerPhysics";
 import { GraphPipeline, type AugmentResult } from "./GraphPipeline";
-import type { ControllerDeps, NodeMenuAction } from "./ports";
+import type { ControllerDeps, MenuEntry, NodeMenuAction } from "./ports";
 
 export interface ControllerState {
 	forceProfileId?: string;
@@ -662,6 +662,10 @@ export class GraphController implements PanelContext, ToolbarContext {
 		await this.deps.store.save();
 	}
 
+	showMenu(event: MouseEvent, entries: MenuEntry[]): void {
+		this.deps.host.showMenu(event, entries);
+	}
+
 	async profileAction(kind: ProfileKind, action: ProfileAction): Promise<void> {
 		const host = this.deps.host;
 		const lib = this.library(kind) as ProfileLibrary<unknown>;
@@ -677,6 +681,12 @@ export class GraphController implements PanelContext, ToolbarContext {
 				if (!name) return;
 				const created = lib.create(name, working);
 				await this.selectProfile(kind, created.id, true);
+				break;
+			}
+			case "duplicate": {
+				const copy = lib.duplicate(id);
+				if (!copy) return;
+				await this.selectProfile(kind, copy.id, true);
 				break;
 			}
 			case "rename": {

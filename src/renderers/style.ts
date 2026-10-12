@@ -30,6 +30,8 @@ export class StyleResolver {
 	private highlightNodes = new Set<string>();
 	private highlightLinks = new Set<string>();
 	private labelSet = new Set<string>();
+	/** 2D "auto" labels shown at any zoom: the most important notes (overlaps are still removed). */
+	private headlineSet = new Set<string>();
 	/** While hovering: the hovered note plus its most connected neighbours (capped). */
 	private hoverLabels = new Set<string>();
 	private labelsDirty = true;
@@ -252,9 +254,14 @@ export class StyleResolver {
 		if (!this.labelsDirty || !this.model) return;
 		this.labelsDirty = false;
 		this.labelSet.clear();
+		this.headlineSet.clear();
 		const mode = this.view.labels.mode;
 		if (mode === "never" || mode === "hover") return;
 		const nodes = this.model.nodes;
+		if (mode === "auto" && this.dims === 2) {
+			const headline = nodes.slice().sort((a, b) => importance(b) - importance(a)).slice(0, HEADLINE_LABELS);
+			for (const n of headline) this.headlineSet.add(n.id);
+		}
 		// Overlapping labels are dropped at draw time, so these are upper bounds.
 		const budget = mode === "always" ? (this.dims === 3 ? 1500 : Infinity) : this.dims === 3 ? Math.min(60, Math.ceil(this.plan.labelBudget / 5)) : this.plan.labelBudget;
 		if (nodes.length <= budget) {
@@ -287,6 +294,7 @@ export class StyleResolver {
 		if (mode === "always") return 1;
 		if (mode === "hover") return 0;
 		this.ensureLabels();
+		if (this.headlineSet.has(node.id)) return 1;
 		const t = this.view.labels.zoomThreshold;
 		const important = this.labelSet.has(node.id) && this.labelSet.size < (this.model?.nodes.length ?? 0);
 		const threshold = important ? t * 0.5 : t;
@@ -322,6 +330,8 @@ export class StyleResolver {
 		return out;
 	}
 }
+
+const HEADLINE_LABELS = 40;
 
 /** How prominent a note is: its connections plus how often it is referenced. */
 export function importance(node: GraphNode): number {

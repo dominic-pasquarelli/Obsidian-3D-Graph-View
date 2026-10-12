@@ -1,6 +1,6 @@
 {
   "name": "obsidian-3d-graph-view",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A modular 3D/2D graph view for Obsidian with reference-weighted links, ghost notes, indirect-link gravity and saveable force/view profiles.",
   "main": "main.js",
   "type": "module",

@@ -9,17 +9,33 @@ export interface ControlChange {
 	final: boolean;
 }
 
+export interface RenderControlsOptions {
+	/** Only render controls that pass (headings are dropped while filtering). */
+	filter?: (spec: { label: string; desc?: string; key?: string }) => boolean;
+}
+
 /**
  * Renders a list of ControlSpecs for one settings object. Calls `onChange` for
  * every edit; the caller re-renders when `final` is true if visibility may change.
+ * Returns the number of controls rendered.
  */
-export function renderControls<S>(parent: HTMLElement, specs: ControlSpec<S>[], settings: S, onChange: (change: ControlChange) => void): void {
+export function renderControls<S>(
+	parent: HTMLElement,
+	specs: ControlSpec<S>[],
+	settings: S,
+	onChange: (change: ControlChange) => void,
+	options: RenderControlsOptions = {},
+): number {
+	let count = 0;
 	for (const spec of specs) {
 		if (spec.showIf && !spec.showIf(settings)) continue;
 		if (spec.type === "heading") {
+			if (options.filter) continue;
 			parent.append(h("div", { class: "g3d-ctl-heading" }, [spec.label, spec.desc ? h("div", { class: "g3d-ctl-desc" }, [spec.desc]) : null]));
 			continue;
 		}
+		if (options.filter && !options.filter(spec)) continue;
+		count++;
 		const value = getPath(settings, spec.key);
 		const row = h("div", { class: `g3d-ctl g3d-ctl-${spec.type}` });
 		const info = h("div", { class: "g3d-ctl-info" }, [h("div", { class: "g3d-ctl-label" }, [spec.label])]);
@@ -84,4 +100,5 @@ export function renderControls<S>(parent: HTMLElement, specs: ControlSpec<S>[], 
 		}
 		parent.append(row);
 	}
+	return count;
 }

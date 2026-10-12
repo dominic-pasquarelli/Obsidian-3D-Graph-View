@@ -80,4 +80,17 @@ describe("labels", () => {
 		expect(labelled).toContain("N39.md"); // most connected neighbour
 		expect(style.labelPriority(style.model!.nodeById.get("Hub.md")!)).toBeGreaterThan(style.labelPriority(style.model!.nodeById.get("N39.md")!));
 	});
+
+	it("show the most connected notes in 2D at any zoom, others only when zoomed in", () => {
+		const files = Array.from({ length: 60 }, (_, i) => file(`N${i}.md`));
+		const resolvedLinks: Record<string, Record<string, number>> = {};
+		// N0..N4 are linked from every other note, so they are the most important.
+		files.forEach((f, i) => (resolvedLinks[f.path] = i >= 5 ? { "N0.md": 1, "N1.md": 1, "N2.md": 1, "N3.md": 1, "N4.md": 1 } : {}));
+		const { style, model } = setup({ files, resolvedLinks, unresolvedLinks: {} });
+		style.setDims(2);
+		const zoomedOut = 0.1;
+		expect(style.labelAlpha2D(model.nodeById.get("N0.md")!, zoomedOut)).toBe(1);
+		expect(style.labelAlpha2D(model.nodeById.get("N59.md")!, zoomedOut)).toBe(0);
+		expect(style.labelAlpha2D(model.nodeById.get("N59.md")!, 10)).toBe(1);
+	});
 });

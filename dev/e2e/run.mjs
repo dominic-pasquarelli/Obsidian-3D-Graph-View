@@ -58,6 +58,12 @@ const nodeAt = (page, id) => page.H((id) => window.harness.controller.screenPosi
 const node = (page, id) => page.H((id) => { const n = window.harness.controller.debugState().model.nodeById.get(id); return { x: n.x, y: n.y, fx: n.fx }; }, id);
 const spread = (page) => page.H(() => { const xs = window.harness.controller.debugState().model.nodes.map((n) => n.x); return Math.max(...xs) - Math.min(...xs); });
 const physicsOn = async (page) => (await page.H(() => window.harness.controller.statusLines())).find((l) => l.startsWith("Physics runs on"));
+const tab = (page, id) => page.locator(`.g3d-tab[data-tab="${id}"]`).click();
+/** Opens a profile row's "⋯" menu and picks an entry. */
+const profileMenu = async (page, kind, title) => {
+	await page.locator(`.g3d-profile[data-kind="${kind}"] .g3d-icon-btn`).click();
+	await page.locator(`.harness-menu [data-title="${title}"]`).click();
+};
 const toggle = (page, section, key) => page.locator(`[data-section="${section}"] input[data-key="${key}"]`).locator("..").click();
 /** Pin a node where it is, so hover/click targets can't drift while the layout settles. */
 const pin = (page, id) =>
@@ -134,6 +140,7 @@ const pin = (page, id) =>
 	last = await page.H(() => window.harness.log.at(-1));
 	check("clicking a not-yet-created note creates it", last?.type === "open" && last.detail.kind === "unresolved", JSON.stringify(last));
 
+	await tab(page, "forces");
 	await page.locator("summary", { hasText: "Second & third-level gravity" }).click();
 	await toggle(page, "force:indirect", "enabled");
 	await page.waitForTimeout(1200);
@@ -156,24 +163,38 @@ const pin = (page, id) =>
 	});
 	check("indirect links survive a text-only vault event mid-computation", survived > 0, `links=${survived}`);
 
-	const forceProfile = page.locator(".g3d-profile").first();
-	await forceProfile.locator("button", { hasText: "Save as…" }).click();
+	check("dirty profile offers save", await page.locator('.g3d-profile[data-kind="force"] .g3d-dirty').isVisible());
+	await profileMenu(page, "force", "Save as new profile…");
 	await page.waitForTimeout(400);
 	check("save as creates a profile", (await page.H(() => window.harness.store.data.forces.list().map((p) => p.name))).includes("My test profile"));
-	await forceProfile.locator("button", { hasText: "Export" }).click();
-	await forceProfile.locator("button", { hasText: "Import" }).click();
+	check("saved profile is clean", (await page.locator('.g3d-profile[data-kind="force"] button', { hasText: "Save" }).isDisabled()) === true);
+	await profileMenu(page, "force", "Duplicate");
+	await page.waitForTimeout(300);
+	check("duplicate copies the profile", (await page.H(() => window.harness.store.data.forces.list().map((p) => p.name))).includes("My test profile copy"));
+	await profileMenu(page, "force", "Delete profile");
+	await page.waitForTimeout(300);
+	check("delete removes the profile", !(await page.H(() => window.harness.store.data.forces.list().map((p) => p.name))).includes("My test profile copy"));
+	await page.locator('.g3d-profile[data-kind="force"] select').selectOption({ label: "My test profile" });
+	await page.waitForTimeout(300);
+	await profileMenu(page, "force", "Export to vault…");
+	await profileMenu(page, "force", "Import from vault…");
 	await page.waitForTimeout(400);
 	check("export + import round-trips", (await page.H(() => window.harness.store.data.forces.list().map((p) => p.name))).includes("My test profile 2"));
 
 	await page.locator(".g3d-segmented button", { hasText: "3D" }).click();
 	await page.waitForTimeout(2000);
-	check("2D/3D switch does not dirty the view profile", (await page.locator(".g3d-profile").nth(1).locator(".g3d-dirty").count()) === 0);
+	check("2D/3D switch does not dirty the view profile", (await page.locator('.g3d-profile[data-kind="view"] .g3d-dirty').count()) === 0);
 
-	await page.locator("summary", { hasText: "Colour groups" }).click();
-	await page.locator('[data-section="colors"] button', { hasText: "Colour groups" }).click();
+	await page.locator(".g3d-settings-search").fill("colour links");
+	await page.waitForTimeout(100);
+	check("settings search finds controls across tabs", (await page.locator('.g3d-panel-body input[data-key="links.colorByGroup"]').count()) === 1 && (await page.locator(".g3d-panel-body .g3d-ctl").count()) <= 3);
+	await page.locator(".g3d-settings-search").fill("");
+	await tab(page, "colors");
+	await page.locator('[data-section="colors"] button', { hasText: "Copy core graph groups" }).click();
 	await page.waitForTimeout(500);
 	check("core colour groups import into the profile", (await page.H(() => window.harness.controller.debugState().view.colors.groups.length)) === 4);
 
+	await tab(page, "filters");
 	await page.H(() => (document.querySelector('[data-section="view:filters"]').open = true));
 	const search = page.locator('[data-section="view:filters"] input[data-key="filters.search"]');
 	await search.fill("tag:#neuro");
